@@ -1,0 +1,995 @@
+[
+    {
+        "label": "logging",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "logging",
+        "description": "logging",
+        "detail": "logging",
+        "documentation": {}
+    },
+    {
+        "label": "numpy",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "numpy",
+        "description": "numpy",
+        "detail": "numpy",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Set",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Callable",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "NamedTuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Set",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Set",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Set",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Tuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Union",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "NamedTuple",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Enum",
+        "importPath": "enum",
+        "description": "enum",
+        "isExtraImport": true,
+        "detail": "enum",
+        "documentation": {}
+    },
+    {
+        "label": "auto",
+        "importPath": "enum",
+        "description": "enum",
+        "isExtraImport": true,
+        "detail": "enum",
+        "documentation": {}
+    },
+    {
+        "label": "Enum",
+        "importPath": "enum",
+        "description": "enum",
+        "isExtraImport": true,
+        "detail": "enum",
+        "documentation": {}
+    },
+    {
+        "label": "auto",
+        "importPath": "enum",
+        "description": "enum",
+        "isExtraImport": true,
+        "detail": "enum",
+        "documentation": {}
+    },
+    {
+        "label": "Enum",
+        "importPath": "enum",
+        "description": "enum",
+        "isExtraImport": true,
+        "detail": "enum",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
+        "label": "time",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "time",
+        "description": "time",
+        "detail": "time",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "json",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "json",
+        "description": "json",
+        "detail": "json",
+        "documentation": {}
+    },
+    {
+        "label": "VectorManifold",
+        "importPath": "word_manifold.manifold.vector_manifold",
+        "description": "word_manifold.manifold.vector_manifold",
+        "isExtraImport": true,
+        "detail": "word_manifold.manifold.vector_manifold",
+        "documentation": {}
+    },
+    {
+        "label": "Cell",
+        "importPath": "word_manifold.manifold.vector_manifold",
+        "description": "word_manifold.manifold.vector_manifold",
+        "isExtraImport": true,
+        "detail": "word_manifold.manifold.vector_manifold",
+        "documentation": {}
+    },
+    {
+        "label": "CellType",
+        "importPath": "word_manifold.manifold.vector_manifold",
+        "description": "word_manifold.manifold.vector_manifold",
+        "isExtraImport": true,
+        "detail": "word_manifold.manifold.vector_manifold",
+        "documentation": {}
+    },
+    {
+        "label": "VectorManifold",
+        "importPath": "word_manifold.manifold.vector_manifold",
+        "description": "word_manifold.manifold.vector_manifold",
+        "isExtraImport": true,
+        "detail": "word_manifold.manifold.vector_manifold",
+        "documentation": {}
+    },
+    {
+        "label": "CellType",
+        "importPath": "word_manifold.manifold.vector_manifold",
+        "description": "word_manifold.manifold.vector_manifold",
+        "isExtraImport": true,
+        "detail": "word_manifold.manifold.vector_manifold",
+        "documentation": {}
+    },
+    {
+        "label": "Cell",
+        "importPath": "word_manifold.manifold.vector_manifold",
+        "description": "word_manifold.manifold.vector_manifold",
+        "isExtraImport": true,
+        "detail": "word_manifold.manifold.vector_manifold",
+        "documentation": {}
+    },
+    {
+        "label": "WordEmbeddings",
+        "importPath": "word_manifold.embeddings.word_embeddings",
+        "description": "word_manifold.embeddings.word_embeddings",
+        "isExtraImport": true,
+        "detail": "word_manifold.embeddings.word_embeddings",
+        "documentation": {}
+    },
+    {
+        "label": "WordEmbeddings",
+        "importPath": "word_manifold.embeddings.word_embeddings",
+        "description": "word_manifold.embeddings.word_embeddings",
+        "isExtraImport": true,
+        "detail": "word_manifold.embeddings.word_embeddings",
+        "documentation": {}
+    },
+    {
+        "label": "OCCULT_TERMS",
+        "importPath": "word_manifold.embeddings.word_embeddings",
+        "description": "word_manifold.embeddings.word_embeddings",
+        "isExtraImport": true,
+        "detail": "word_manifold.embeddings.word_embeddings",
+        "documentation": {}
+    },
+    {
+        "label": "os",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "os",
+        "description": "os",
+        "detail": "os",
+        "documentation": {}
+    },
+    {
+        "label": "pickle",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "pickle",
+        "description": "pickle",
+        "detail": "pickle",
+        "documentation": {}
+    },
+    {
+        "label": "cosine_similarity",
+        "importPath": "sklearn.metrics.pairwise",
+        "description": "sklearn.metrics.pairwise",
+        "isExtraImport": true,
+        "detail": "sklearn.metrics.pairwise",
+        "documentation": {}
+    },
+    {
+        "label": "cosine_distances",
+        "importPath": "sklearn.metrics.pairwise",
+        "description": "sklearn.metrics.pairwise",
+        "isExtraImport": true,
+        "detail": "sklearn.metrics.pairwise",
+        "documentation": {}
+    },
+    {
+        "label": "euclidean_distances",
+        "importPath": "sklearn.metrics.pairwise",
+        "description": "sklearn.metrics.pairwise",
+        "isExtraImport": true,
+        "detail": "sklearn.metrics.pairwise",
+        "documentation": {}
+    },
+    {
+        "label": "AutoTokenizer",
+        "importPath": "transformers",
+        "description": "transformers",
+        "isExtraImport": true,
+        "detail": "transformers",
+        "documentation": {}
+    },
+    {
+        "label": "AutoModel",
+        "importPath": "transformers",
+        "description": "transformers",
+        "isExtraImport": true,
+        "detail": "transformers",
+        "documentation": {}
+    },
+    {
+        "label": "torch",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "torch",
+        "description": "torch",
+        "detail": "torch",
+        "documentation": {}
+    },
+    {
+        "label": "sys",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "sys",
+        "description": "sys",
+        "detail": "sys",
+        "documentation": {}
+    },
+    {
+        "label": "matplotlib.pyplot",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "matplotlib.pyplot",
+        "description": "matplotlib.pyplot",
+        "detail": "matplotlib.pyplot",
+        "documentation": {}
+    },
+    {
+        "label": "matplotlib.animation",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "matplotlib.animation",
+        "description": "matplotlib.animation",
+        "detail": "matplotlib.animation",
+        "documentation": {}
+    },
+    {
+        "label": "datetime",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "datetime",
+        "description": "datetime",
+        "detail": "datetime",
+        "documentation": {}
+    },
+    {
+        "label": "CellularRule",
+        "importPath": "word_manifold.automata.cellular_rules",
+        "description": "word_manifold.automata.cellular_rules",
+        "isExtraImport": true,
+        "detail": "word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "RuleParameterSet",
+        "importPath": "word_manifold.automata.cellular_rules",
+        "description": "word_manifold.automata.cellular_rules",
+        "isExtraImport": true,
+        "detail": "word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "RuleSequence",
+        "importPath": "word_manifold.automata.cellular_rules",
+        "description": "word_manifold.automata.cellular_rules",
+        "isExtraImport": true,
+        "detail": "word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "HermeticPrinciple",
+        "importPath": "word_manifold.automata.cellular_rules",
+        "description": "word_manifold.automata.cellular_rules",
+        "isExtraImport": true,
+        "detail": "word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "ElementalForce",
+        "importPath": "word_manifold.automata.cellular_rules",
+        "description": "word_manifold.automata.cellular_rules",
+        "isExtraImport": true,
+        "detail": "word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "VibrationDirection",
+        "importPath": "word_manifold.automata.cellular_rules",
+        "description": "word_manifold.automata.cellular_rules",
+        "isExtraImport": true,
+        "detail": "word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "create_predefined_rules",
+        "importPath": "word_manifold.automata.cellular_rules",
+        "description": "word_manifold.automata.cellular_rules",
+        "isExtraImport": true,
+        "detail": "word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "AutomataSystem",
+        "importPath": "word_manifold.automata.system",
+        "description": "word_manifold.automata.system",
+        "isExtraImport": true,
+        "detail": "word_manifold.automata.system",
+        "documentation": {}
+    },
+    {
+        "label": "EvolutionPattern",
+        "importPath": "word_manifold.automata.system",
+        "description": "word_manifold.automata.system",
+        "isExtraImport": true,
+        "detail": "word_manifold.automata.system",
+        "documentation": {}
+    },
+    {
+        "label": "KMeans",
+        "importPath": "sklearn.cluster",
+        "description": "sklearn.cluster",
+        "isExtraImport": true,
+        "detail": "sklearn.cluster",
+        "documentation": {}
+    },
+    {
+        "label": "DBSCAN",
+        "importPath": "sklearn.cluster",
+        "description": "sklearn.cluster",
+        "isExtraImport": true,
+        "detail": "sklearn.cluster",
+        "documentation": {}
+    },
+    {
+        "label": "TSNE",
+        "importPath": "sklearn.manifold",
+        "description": "sklearn.manifold",
+        "isExtraImport": true,
+        "detail": "sklearn.manifold",
+        "documentation": {}
+    },
+    {
+        "label": "umap",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "umap",
+        "description": "umap",
+        "detail": "umap",
+        "documentation": {}
+    },
+    {
+        "label": "Voronoi",
+        "importPath": "scipy.spatial",
+        "description": "scipy.spatial",
+        "isExtraImport": true,
+        "detail": "scipy.spatial",
+        "documentation": {}
+    },
+    {
+        "label": "Delaunay",
+        "importPath": "scipy.spatial",
+        "description": "scipy.spatial",
+        "isExtraImport": true,
+        "detail": "scipy.spatial",
+        "documentation": {}
+    },
+    {
+        "label": "ConvexHull",
+        "importPath": "scipy.spatial",
+        "description": "scipy.spatial",
+        "isExtraImport": true,
+        "detail": "scipy.spatial",
+        "documentation": {}
+    },
+    {
+        "label": "create_celestial_rules",
+        "kind": 2,
+        "importPath": "src.word_manifold.automata.additional_rules",
+        "description": "src.word_manifold.automata.additional_rules",
+        "peekOfCode": "def create_celestial_rules() -> Dict[str, CellularRule]:\n    \"\"\"\n    Create rules based on celestial bodies and higher spiritual archetypes.\n    These rules complement the base rule set by adding transformations\n    related to cosmic forces and stellar/planetary influences.\n    Returns:\n        Dictionary mapping rule names to CellularRule objects\n    \"\"\"\n    rules = {}",
+        "detail": "src.word_manifold.automata.additional_rules",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.word_manifold.automata.additional_rules",
+        "description": "src.word_manifold.automata.additional_rules",
+        "peekOfCode": "logger = logging.getLogger(__name__)\ndef create_celestial_rules() -> Dict[str, CellularRule]:\n    \"\"\"\n    Create rules based on celestial bodies and higher spiritual archetypes.\n    These rules complement the base rule set by adding transformations\n    related to cosmic forces and stellar/planetary influences.\n    Returns:\n        Dictionary mapping rule names to CellularRule objects\n    \"\"\"\n    rules = {}",
+        "detail": "src.word_manifold.automata.additional_rules",
+        "documentation": {}
+    },
+    {
+        "label": "HermeticPrinciple",
+        "kind": 6,
+        "importPath": "src.word_manifold.automata.cellular_rules",
+        "description": "src.word_manifold.automata.cellular_rules",
+        "peekOfCode": "class HermeticPrinciple(Enum):\n    \"\"\"The seven Hermetic principles that govern transformation rules.\"\"\"\n    MENTALISM = auto()         # \"THE ALL is MIND; The Universe is Mental.\"\n    CORRESPONDENCE = auto()    # \"As above, so below; as below, so above.\"\n    VIBRATION = auto()         # \"Nothing rests; everything moves; everything vibrates.\"\n    POLARITY = auto()          # \"Everything is Dual; everything has poles.\"\n    RHYTHM = auto()            # \"Everything flows, out and in; everything has its tides.\"\n    CAUSE_EFFECT = auto()      # \"Every Cause has its Effect; Every Effect has its Cause.\"\n    GENDER = auto()            # \"Gender is in everything; everything has its Masculine and Feminine.\"\nclass ElementalForce(Enum):",
+        "detail": "src.word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "ElementalForce",
+        "kind": 6,
+        "importPath": "src.word_manifold.automata.cellular_rules",
+        "description": "src.word_manifold.automata.cellular_rules",
+        "peekOfCode": "class ElementalForce(Enum):\n    \"\"\"The four elemental forces that influence transformation.\"\"\"\n    EARTH = auto()  # Stability, materiality, resistance to change\n    AIR = auto()    # Intellect, communication, adaptability\n    FIRE = auto()   # Energy, transformation, creation/destruction\n    WATER = auto()  # Emotion, intuition, connection\nclass VibrationDirection(Enum):\n    \"\"\"Possible directions of vibrational change in the vector space.\"\"\"\n    ASCENDING = auto()  # Moving towards higher vibration (complexity, abstraction)\n    DESCENDING = auto() # Moving towards lower vibration (simplicity, concreteness)",
+        "detail": "src.word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "VibrationDirection",
+        "kind": 6,
+        "importPath": "src.word_manifold.automata.cellular_rules",
+        "description": "src.word_manifold.automata.cellular_rules",
+        "peekOfCode": "class VibrationDirection(Enum):\n    \"\"\"Possible directions of vibrational change in the vector space.\"\"\"\n    ASCENDING = auto()  # Moving towards higher vibration (complexity, abstraction)\n    DESCENDING = auto() # Moving towards lower vibration (simplicity, concreteness)\n    EXPANDING = auto()  # Increasing in scope or influence\n    CONTRACTING = auto() # Decreasing in scope or influence\n    HARMONIZING = auto() # Moving towards balance with neighbors\n    POLARIZING = auto()  # Moving away from neighbors, increasing distinction\n@dataclass\nclass RuleParameterSet:",
+        "detail": "src.word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "RuleParameterSet",
+        "kind": 6,
+        "importPath": "src.word_manifold.automata.cellular_rules",
+        "description": "src.word_manifold.automata.cellular_rules",
+        "peekOfCode": "class RuleParameterSet:\n    \"\"\"Parameters that define how a transformation rule behaves.\"\"\"\n    magnitude: float = 1.0                  # Base strength of transformation\n    principle: HermeticPrinciple = HermeticPrinciple.CORRESPONDENCE\n    elemental_influence: Dict[ElementalForce, float] = None  # Influence of each element\n    numerological_weights: Dict[int, float] = None  # Weights by numerological value\n    cell_type_weights: Dict[CellType, float] = None  # Weights by cell type\n    vibration_direction: VibrationDirection = VibrationDirection.HARMONIZING\n    def __post_init__(self):\n        \"\"\"Initialize default dictionaries if None.\"\"\"",
+        "detail": "src.word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "CellularRule",
+        "kind": 6,
+        "importPath": "src.word_manifold.automata.cellular_rules",
+        "description": "src.word_manifold.automata.cellular_rules",
+        "peekOfCode": "class CellularRule:\n    \"\"\"\n    A rule that defines how cells transform in the vector space.\n    Each rule embodies one or more hermetic principles and governs \n    the evolution of the cellular automata system.\n    \"\"\"\n    def __init__(\n        self, \n        name: str, \n        description: str,",
+        "detail": "src.word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "RuleSequence",
+        "kind": 6,
+        "importPath": "src.word_manifold.automata.cellular_rules",
+        "description": "src.word_manifold.automata.cellular_rules",
+        "peekOfCode": "class RuleSequence:\n    \"\"\"\n    A sequence of cellular rules to be applied in a specific order,\n    representing a ritual or magical working in the vector space.\n    \"\"\"\n    def __init__(\n        self,\n        name: str,\n        description: str,\n        rules: List[CellularRule],",
+        "detail": "src.word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "create_predefined_rules",
+        "kind": 2,
+        "importPath": "src.word_manifold.automata.cellular_rules",
+        "description": "src.word_manifold.automata.cellular_rules",
+        "peekOfCode": "def create_predefined_rules() -> Dict[str, CellularRule]:\n    \"\"\"\n    Create a set of predefined cellular automata rules based on\n    hermetic principles and occult correspondences.\n    Returns:\n        Dictionary mapping rule names to CellularRule objects\n    \"\"\"\n    rules = {}\n    # The Great Work Rule - Based on alchemical transformation\n    great_work_params = RuleParameterSet(",
+        "detail": "src.word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "create_predefined_sequences",
+        "kind": 2,
+        "importPath": "src.word_manifold.automata.cellular_rules",
+        "description": "src.word_manifold.automata.cellular_rules",
+        "peekOfCode": "def create_predefined_sequences() -> Dict[str, RuleSequence]:\n    \"\"\"\n    Create a set of predefined rule sequences based on\n    magical rituals and occult correspondences.\n    Returns:\n        Dictionary mapping sequence names to RuleSequence objects\n    \"\"\"\n    rules = create_predefined_rules()\n    sequences = {}\n    # The Great Work Sequence - Alchemical transformation from base to divine",
+        "detail": "src.word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.word_manifold.automata.cellular_rules",
+        "description": "src.word_manifold.automata.cellular_rules",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass HermeticPrinciple(Enum):\n    \"\"\"The seven Hermetic principles that govern transformation rules.\"\"\"\n    MENTALISM = auto()         # \"THE ALL is MIND; The Universe is Mental.\"\n    CORRESPONDENCE = auto()    # \"As above, so below; as below, so above.\"\n    VIBRATION = auto()         # \"Nothing rests; everything moves; everything vibrates.\"\n    POLARITY = auto()          # \"Everything is Dual; everything has poles.\"\n    RHYTHM = auto()            # \"Everything flows, out and in; everything has its tides.\"\n    CAUSE_EFFECT = auto()      # \"Every Cause has its Effect; Every Effect has its Cause.\"\n    GENDER = auto()            # \"Gender is in everything; everything has its Masculine and Feminine.\"",
+        "detail": "src.word_manifold.automata.cellular_rules",
+        "documentation": {}
+    },
+    {
+        "label": "EvolutionPattern",
+        "kind": 6,
+        "importPath": "src.word_manifold.automata.system",
+        "description": "src.word_manifold.automata.system",
+        "peekOfCode": "class EvolutionPattern(Enum):\n    \"\"\"Patterns of evolution that the automata system can follow.\"\"\"\n    LINEAR = auto()      # Sequential application of rules\n    CYCLIC = auto()      # Repeated application of rules in a cycle\n    SPIRAL = auto()      # Cyclic with increasing intensity\n    CHAOTIC = auto()     # Random selection of rules\n    THELEMIC = auto()    # Rules selected based on True Will principle\n    KABBALISTIC = auto() # Rules follow Tree of Life pattern\n@dataclass\nclass SystemState:",
+        "detail": "src.word_manifold.automata.system",
+        "documentation": {}
+    },
+    {
+        "label": "SystemState",
+        "kind": 6,
+        "importPath": "src.word_manifold.automata.system",
+        "description": "src.word_manifold.automata.system",
+        "peekOfCode": "class SystemState:\n    \"\"\"State of the automata system at a point in time.\"\"\"\n    generation: int                # Current generation number\n    active_rules: List[str]        # Names of rules currently active\n    manifold_state: Dict[str, Any] # State snapshot of the manifold\n    timestamp: float               # Unix timestamp when state was captured\n    metrics: Dict[str, float]      # Metrics about the system's state\nclass AutomataSystem:\n    \"\"\"\n    A system that orchestrates the application of cellular automata rules",
+        "detail": "src.word_manifold.automata.system",
+        "documentation": {}
+    },
+    {
+        "label": "AutomataSystem",
+        "kind": 6,
+        "importPath": "src.word_manifold.automata.system",
+        "description": "src.word_manifold.automata.system",
+        "peekOfCode": "class AutomataSystem:\n    \"\"\"\n    A system that orchestrates the application of cellular automata rules\n    to a word vector manifold according to hermetic principles.\n    This class manages the evolution of the manifold through generations,\n    applying rules according to specified patterns and tracking the system's\n    state over time.\n    \"\"\"\n    def __init__(\n        self,",
+        "detail": "src.word_manifold.automata.system",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.word_manifold.automata.system",
+        "description": "src.word_manifold.automata.system",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass EvolutionPattern(Enum):\n    \"\"\"Patterns of evolution that the automata system can follow.\"\"\"\n    LINEAR = auto()      # Sequential application of rules\n    CYCLIC = auto()      # Repeated application of rules in a cycle\n    SPIRAL = auto()      # Cyclic with increasing intensity\n    CHAOTIC = auto()     # Random selection of rules\n    THELEMIC = auto()    # Rules selected based on True Will principle\n    KABBALISTIC = auto() # Rules follow Tree of Life pattern\n@dataclass",
+        "detail": "src.word_manifold.automata.system",
+        "documentation": {}
+    },
+    {
+        "label": "WordEmbeddings",
+        "kind": 6,
+        "importPath": "src.word_manifold.embeddings.word_embeddings",
+        "description": "src.word_manifold.embeddings.word_embeddings",
+        "peekOfCode": "class WordEmbeddings:\n    \"\"\"\n    A class for handling word embeddings with a focus on occult terminology.\n    This class provides methods to load, process, and manipulate word embeddings\n    using transformer models. It includes functionality for similarity calculations\n    and neighborhood operations necessary for cellular automata in word vector space.\n    \"\"\"\n    def __init__(\n        self, \n        model_name: str = \"bert-base-uncased\", ",
+        "detail": "src.word_manifold.embeddings.word_embeddings",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.word_manifold.embeddings.word_embeddings",
+        "description": "src.word_manifold.embeddings.word_embeddings",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n# Basic set of occult terms for initial testing\nOCCULT_TERMS = {\n    # Thelema/Crowley related\n    \"thelema\", \"crowley\", \"aiwass\", \"liber\", \"babalon\", \"hoor\", \"nuit\", \"hadit\", \n    \"magick\", \"aeon\", \"abrahadabra\", \"aethyr\", \"choronzon\",\n    # Tarot\n    \"tarot\", \"arcana\", \"pentacles\", \"wands\", \"cups\", \"swords\", \"hierophant\", \n    \"hermit\", \"magician\", \"priestess\", \"empress\", \"emperor\", \"chariot\",\n    # Kabbalah/Numerology",
+        "detail": "src.word_manifold.embeddings.word_embeddings",
+        "documentation": {}
+    },
+    {
+        "label": "OCCULT_TERMS",
+        "kind": 5,
+        "importPath": "src.word_manifold.embeddings.word_embeddings",
+        "description": "src.word_manifold.embeddings.word_embeddings",
+        "peekOfCode": "OCCULT_TERMS = {\n    # Thelema/Crowley related\n    \"thelema\", \"crowley\", \"aiwass\", \"liber\", \"babalon\", \"hoor\", \"nuit\", \"hadit\", \n    \"magick\", \"aeon\", \"abrahadabra\", \"aethyr\", \"choronzon\",\n    # Tarot\n    \"tarot\", \"arcana\", \"pentacles\", \"wands\", \"cups\", \"swords\", \"hierophant\", \n    \"hermit\", \"magician\", \"priestess\", \"empress\", \"emperor\", \"chariot\",\n    # Kabbalah/Numerology\n    \"kabbalah\", \"sephiroth\", \"gematria\", \"ain\", \"soph\", \"kether\", \"chokmah\", \n    \"binah\", \"chesed\", \"geburah\", \"tiphareth\", \"netzach\", \"hod\", \"yesod\", \"malkuth\",",
+        "detail": "src.word_manifold.embeddings.word_embeddings",
+        "documentation": {}
+    },
+    {
+        "label": "RitualWorking",
+        "kind": 6,
+        "importPath": "src.word_manifold.examples.ritual_evolution",
+        "description": "src.word_manifold.examples.ritual_evolution",
+        "peekOfCode": "class RitualWorking:\n    \"\"\"\n    A class that implements a complete magical working in word vector space.\n    \"\"\"\n    def __init__(self, ritual_name: str, ritual_intent: str):\n        \"\"\"\n        Initialize the ritual working.\n        Args:\n            ritual_name: Name of the ritual\n            ritual_intent: Statement of magical intent",
+        "detail": "src.word_manifold.examples.ritual_evolution",
+        "documentation": {}
+    },
+    {
+        "label": "current_dir",
+        "kind": 5,
+        "importPath": "src.word_manifold.examples.ritual_evolution",
+        "description": "src.word_manifold.examples.ritual_evolution",
+        "peekOfCode": "current_dir = os.path.dirname(os.path.abspath(__file__))\nparent_dir = os.path.dirname(os.path.dirname(current_dir))\nif parent_dir not in sys.path:\n    sys.path.append(parent_dir)\nfrom word_manifold.embeddings.word_embeddings import WordEmbeddings, OCCULT_TERMS\nfrom word_manifold.manifold.vector_manifold import VectorManifold, CellType, Cell\nfrom word_manifold.automata.cellular_rules import (\n    CellularRule, RuleParameterSet, RuleSequence,\n    HermeticPrinciple, ElementalForce, VibrationDirection,\n    create_predefined_rules",
+        "detail": "src.word_manifold.examples.ritual_evolution",
+        "documentation": {}
+    },
+    {
+        "label": "parent_dir",
+        "kind": 5,
+        "importPath": "src.word_manifold.examples.ritual_evolution",
+        "description": "src.word_manifold.examples.ritual_evolution",
+        "peekOfCode": "parent_dir = os.path.dirname(os.path.dirname(current_dir))\nif parent_dir not in sys.path:\n    sys.path.append(parent_dir)\nfrom word_manifold.embeddings.word_embeddings import WordEmbeddings, OCCULT_TERMS\nfrom word_manifold.manifold.vector_manifold import VectorManifold, CellType, Cell\nfrom word_manifold.automata.cellular_rules import (\n    CellularRule, RuleParameterSet, RuleSequence,\n    HermeticPrinciple, ElementalForce, VibrationDirection,\n    create_predefined_rules\n)",
+        "detail": "src.word_manifold.examples.ritual_evolution",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.word_manifold.examples.ritual_evolution",
+        "description": "src.word_manifold.examples.ritual_evolution",
+        "peekOfCode": "logger = logging.getLogger(\"ritual_evolution\")\n# Directory for saving outputs\nOUTPUT_DIR = Path(\"ritual_outputs\")\nclass RitualWorking:\n    \"\"\"\n    A class that implements a complete magical working in word vector space.\n    \"\"\"\n    def __init__(self, ritual_name: str, ritual_intent: str):\n        \"\"\"\n        Initialize the ritual working.",
+        "detail": "src.word_manifold.examples.ritual_evolution",
+        "documentation": {}
+    },
+    {
+        "label": "OUTPUT_DIR",
+        "kind": 5,
+        "importPath": "src.word_manifold.examples.ritual_evolution",
+        "description": "src.word_manifold.examples.ritual_evolution",
+        "peekOfCode": "OUTPUT_DIR = Path(\"ritual_outputs\")\nclass RitualWorking:\n    \"\"\"\n    A class that implements a complete magical working in word vector space.\n    \"\"\"\n    def __init__(self, ritual_name: str, ritual_intent: str):\n        \"\"\"\n        Initialize the ritual working.\n        Args:\n            ritual_name: Name of the ritual",
+        "detail": "src.word_manifold.examples.ritual_evolution",
+        "documentation": {}
+    },
+    {
+        "label": "CellType",
+        "kind": 6,
+        "importPath": "src.word_manifold.manifold.vector_manifold",
+        "description": "src.word_manifold.manifold.vector_manifold",
+        "peekOfCode": "class CellType(Enum):\n    \"\"\"Types of cells with occult significance.\"\"\"\n    ELEMENTAL = 1  # Earth, Air, Fire, Water\n    PLANETARY = 2  # 7 classical planets\n    ZODIACAL = 3   # 12 zodiac signs\n    TAROT = 4      # 22 major arcana\n    SEPHIROTIC = 5 # 10 sephiroth\n    OTHER = 6      # Other types\nclass DistanceType(Enum):\n    \"\"\"Types of distance metrics available.\"\"\"",
+        "detail": "src.word_manifold.manifold.vector_manifold",
+        "documentation": {}
+    },
+    {
+        "label": "DistanceType",
+        "kind": 6,
+        "importPath": "src.word_manifold.manifold.vector_manifold",
+        "description": "src.word_manifold.manifold.vector_manifold",
+        "peekOfCode": "class DistanceType(Enum):\n    \"\"\"Types of distance metrics available.\"\"\"\n    EUCLIDEAN = 1\n    COSINE = 2\n    NUMEROLOGICAL = 3  # Distance weighted by numerological significance\n    HYBRID = 4         # Combination of semantic and numerological\n@dataclass\nclass Cell:\n    \"\"\"\n    A cell in the manifold representing a region in the vector space.",
+        "detail": "src.word_manifold.manifold.vector_manifold",
+        "documentation": {}
+    },
+    {
+        "label": "Cell",
+        "kind": 6,
+        "importPath": "src.word_manifold.manifold.vector_manifold",
+        "description": "src.word_manifold.manifold.vector_manifold",
+        "peekOfCode": "class Cell:\n    \"\"\"\n    A cell in the manifold representing a region in the vector space.\n    \"\"\"\n    id: int\n    terms: List[str]                    # Words that belong to this cell        # Update all cells with new centroids\n        # The reduced representation is now outdated\n        # If visualization is needed, the dimensions should be reduced again\n    def refresh_reduced_representation(self) -> None:\n        \"\"\"",
+        "detail": "src.word_manifold.manifold.vector_manifold",
+        "documentation": {}
+    },
+    {
+        "label": "ManifoldReducedState",
+        "kind": 6,
+        "importPath": "src.word_manifold.manifold.vector_manifold",
+        "description": "src.word_manifold.manifold.vector_manifold",
+        "peekOfCode": "class ManifoldReducedState(NamedTuple):\n    \"\"\"State of the reduced manifold for visualization and cellular operations.\"\"\"\n    points: np.ndarray         # 2D or 3D points\n    labels: List[int]          # Cell labels for each point\n    cell_centroids: np.ndarray # Reduced centroids\n    boundaries: List[Any]      # Boundary representations\nclass VectorManifold:\n    \"\"\"\n    A class representing a manifold structure over word embeddings.\n    This manifold divides the vector space into semantically meaningful regions,",
+        "detail": "src.word_manifold.manifold.vector_manifold",
+        "documentation": {}
+    },
+    {
+        "label": "VectorManifold",
+        "kind": 6,
+        "importPath": "src.word_manifold.manifold.vector_manifold",
+        "description": "src.word_manifold.manifold.vector_manifold",
+        "peekOfCode": "class VectorManifold:\n    \"\"\"\n    A class representing a manifold structure over word embeddings.\n    This manifold divides the vector space into semantically meaningful regions,\n    establishes topological relationships, and supports transformations that\n    incorporate both semantic similarity and numerological significance.\n    \"\"\"\n    def __init__(\n        self,\n        word_embeddings: WordEmbeddings,",
+        "detail": "src.word_manifold.manifold.vector_manifold",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.word_manifold.manifold.vector_manifold",
+        "description": "src.word_manifold.manifold.vector_manifold",
+        "peekOfCode": "logger = logging.getLogger(__name__)\nclass CellType(Enum):\n    \"\"\"Types of cells with occult significance.\"\"\"\n    ELEMENTAL = 1  # Earth, Air, Fire, Water\n    PLANETARY = 2  # 7 classical planets\n    ZODIACAL = 3   # 12 zodiac signs\n    TAROT = 4      # 22 major arcana\n    SEPHIROTIC = 5 # 10 sephiroth\n    OTHER = 6      # Other types\nclass DistanceType(Enum):",
+        "detail": "src.word_manifold.manifold.vector_manifold",
+        "documentation": {}
+    }
+]
