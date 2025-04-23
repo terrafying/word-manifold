@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Manifold Visualization</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='visualization.css') }}">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/9.4.4/math.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <div class="main-content">
+            <header class="header">
+                <h1>Word Manifold Visualization</h1>
+                <p>Explore semantic relationships and polarities in high-dimensional word spaces</p>
+            </header>
+
+            <div class="plot-container" id="plotContainer">
+                <div id="plot"></div>
+            </div>
+
+            <div class="control-panel">
+                <div class="control-group">
+                    <h3>Text Analysis</h3>
+                    <div class="input-area">
+                        <textarea id="textInput" placeholder="Enter text to analyze..."></textarea>
+                    </div>
+                    <div class="btn-group">
+                        <button id="analyzeBtn" class="btn" data-tooltip="Analyze text and visualize semantic relationships">
+                            Analyze Text
+                        </button>
+                        <button id="clearBtn" class="btn" data-tooltip="Clear visualization and input">
+                            Clear
+                        </button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <h3>Visualization Controls</h3>
+                    <div class="btn-group">
+                        <button id="rotateBtn" class="btn" data-tooltip="Toggle auto-rotation of the visualization">
+                            Auto-rotate
+                        </button>
+                        <button id="trailsBtn" class="btn" data-tooltip="Show/hide motion trails">
+                            Show Trails
+                        </button>
+                        <button id="forceFieldBtn" class="btn" data-tooltip="Toggle force field visualization">
+                            Force Field
+                        </button>
+                        <button id="resetViewBtn" class="btn" data-tooltip="Reset camera to default position">
+                            Reset View
+                        </button>
+                    </div>
+                    
+                    <div class="slider-container">
+                        <label for="speedSlider">Rotation Speed</label>
+                        <input type="range" id="speedSlider" class="slider" min="0" max="100" value="50">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="metrics-panel">
+                <h3>Metrics</h3>
+                <div class="metric">
+                    <span class="metric-label">Dimensionality</span>
+                    <span id="dimensionality" class="metric-value">0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Density</span>
+                    <span id="density" class="metric-value">0.00</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Coherence</span>
+                    <span id="coherence" class="metric-value">0.00</span>
+                </div>
+            </div>
+
+            <div class="neighbors-panel">
+                <h3>Nearest Neighbors</h3>
+                <ul id="neighborsList" class="neighbors-list">
+                    <!-- Neighbors will be dynamically added here -->
+                </ul>
+            </div>
+
+            <div class="polarity-panel">
+                <h3>Semantic Polarities</h3>
+                <div id="polarityMetrics">
+                    <!-- Polarity metrics will be dynamically added here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <script src="{{ url_for('static', filename='visualization.js') }}"></script>
+</body>
+</html> 

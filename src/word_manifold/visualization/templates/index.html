@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Manifold Visualization</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">Word Manifold Visualization</h1>
+        
+        <div class="plot-container" id="plot"></div>
+        
+        <div class="control-panel">
+            <h3>Text Analysis</h3>
+            <div class="input-group">
+                <label for="input-text">Enter text to analyze:</label>
+                <textarea id="input-text" placeholder="Enter your text here..."></textarea>
+            </div>
+            <div class="button-group">
+                <button id="analyze-btn">Analyze Text</button>
+                <button id="reset-btn">Reset View</button>
+                <button id="toggle-rotation-btn">Toggle Auto-rotation</button>
+                <button id="toggle-trails-btn">Toggle Trails</button>
+            </div>
+        </div>
+        
+        <div class="metrics-panel">
+            <h3>Semantic Metrics</h3>
+            <div class="metric">
+                <span class="metric-label">Emotional Valence:</span>
+                <span class="metric-value" id="emotional-valence">-</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Concrete-Abstract Ratio:</span>
+                <span class="metric-value" id="concrete-abstract">-</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Semantic Coherence:</span>
+                <span class="metric-value" id="coherence">-</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Nearest Neighbors:</span>
+                <ul class="neighbors-list" id="neighbors"></ul>
+            </div>
+        </div>
+        
+        <div class="loading" id="loading">Processing...</div>
+    </div>
+
+    <script>
+        let plot;
+        let isRotating = false;
+        let showTrails = false;
+        
+        // Initialize the 3D plot
+        function initPlot(data) {
+            const layout = {
+                scene: {
+                    camera: {
+                        eye: {x: 1.5, y: 1.5, z: 1.5}
+                    }
+                },
+                margin: {l: 0, r: 0, t: 0, b: 0},
+                showlegend: true
+            };
+            
+            Plotly.newPlot('plot', data, layout);
+            plot = document.getElementById('plot');
+        }
+        
+        // Update plot with new data
+        function updatePlot(data) {
+            Plotly.react('plot', data);
+        }
+        
+        // Toggle auto-rotation
+        function toggleRotation() {
+            isRotating = !isRotating;
+            if (isRotating) {
+                rotateCamera();
+            }
+        }
+        
+        // Rotate camera
+        function rotateCamera() {
+            if (!isRotating) return;
+            
+            const scene = plot.layout.scene;
+            const camera = scene.camera;
+            const eye = camera.eye;
+            
+            const radius = Math.sqrt(eye.x * eye.x + eye.y * eye.y);
+            const theta = Math.atan2(eye.y, eye.x);
+            
+            eye.x = radius * Math.cos(theta + 0.05);
+            eye.y = radius * Math.sin(theta + 0.05);
+            
+            Plotly.relayout(plot, {'scene.camera': camera});
+            requestAnimationFrame(rotateCamera);
+        }
+        
+        // Reset camera view
+        function resetView() {
+            Plotly.relayout(plot, {
+                'scene.camera': {
+                    eye: {x: 1.5, y: 1.5, z: 1.5}
+                }
+            });
+        }
+        
+        // Toggle trails
+        function toggleTrails() {
+            showTrails = !showTrails;
+            // Update plot with new trail settings
+            $.get('/api/embeddings', function(data) {
+                data.forEach(trace => {
+                    trace.mode = showTrails ? 'lines+markers' : 'markers';
+                });
+                updatePlot(data);
+            });
+        }
+        
+        // Analyze text
+        function analyzeText() {
+            const text = $('#input-text').val();
+            if (!text) return;
+            
+            $('#loading').show();
+            
+            $.post('/api/analyze', {text: text}, function(response) {
+                $('#emotional-valence').text(response.emotional_valence.toFixed(2));
+                $('#concrete-abstract').text(response.concrete_abstract_ratio.toFixed(2));
+                $('#coherence').text(response.coherence.toFixed(2));
+                
+                // Update neighbors list
+                const neighborsList = $('#neighbors');
+                neighborsList.empty();
+                response.nearest_neighbors.forEach(neighbor => {
+                    neighborsList.append(`<li>${neighbor}</li>`);
+                });
+                
+                // Update plot with highlighted points
+                if (response.projected_points) {
+                    updatePlot(response.projected_points);
+                }
+                
+                $('#loading').hide();
+            }).fail(function() {
+                alert('Error analyzing text');
+                $('#loading').hide();
+            });
+        }
+        
+        // Event listeners
+        $(document).ready(function() {
+            // Initialize plot with empty data
+            $.get('/api/embeddings', function(data) {
+                initPlot(data);
+            });
+            
+            $('#analyze-btn').click(analyzeText);
+            $('#reset-btn').click(resetView);
+            $('#toggle-rotation-btn').click(toggleRotation);
+            $('#toggle-trails-btn').click(toggleTrails);
+            
+            // Handle Enter key in textarea
+            $('#input-text').keypress(function(e) {
+                if (e.which == 13 && !e.shiftKey) {
+                    e.preventDefault();
+                    analyzeText();
+                }
+            });
+        });
+    </script>
+</body>
+</html> 

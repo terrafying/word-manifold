@@ -1,330 +1,198 @@
 """
-Word Embeddings Module for Cellular Automata in Word Vector Space.
+Word Embeddings Module for handling word vector representations.
 
-This module provides functionality for loading, processing, and manipulating
-word embeddings with a focus on occult terminology. It serves as the foundation
-for the cellular automata system operating in word embedding space.
+This module provides functionality for loading, managing, and manipulating
+word embeddings, including support for numerological calculations and
+semantic similarity operations.
 """
 
-import os
-import json
 import numpy as np
-from typing import Dict, List, Set, Tuple, Optional, Union, Any
-from pathlib import Path
-import pickle
+from sentence_transformers import SentenceTransformer
 import logging
-from sklearn.metrics.pairwise import cosine_similarity
-from transformers import AutoTokenizer, AutoModel
 import torch
+from functools import lru_cache
+from typing import List, Set, Dict, Optional, Union, Tuple, Any
 
 # Configure logging
-logging.basicConfig(level=logging.INFO, 
+logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Basic set of occult terms for initial testing
-OCCULT_TERMS = {
-    # Thelema/Crowley related
-    "thelema", "crowley", "aiwass", "liber", "babalon", "hoor", "nuit", "hadit", 
-    "magick", "aeon", "abrahadabra", "aethyr", "choronzon",
-    
-    # Tarot
-    "tarot", "arcana", "pentacles", "wands", "cups", "swords", "hierophant", 
-    "hermit", "magician", "priestess", "empress", "emperor", "chariot",
-    
-    # Kabbalah/Numerology
-    "kabbalah", "sephiroth", "gematria", "ain", "soph", "kether", "chokmah", 
-    "binah", "chesed", "geburah", "tiphareth", "netzach", "hod", "yesod", "malkuth",
-    
-    # General occult
-    "alchemy", "hermeticism", "grimoire", "ritual", "invocation", "evocation", 
-    "astral", "thaumaturgy", "theurgy", "enochian", "goetia", "pentagram",
-    
-    # Numerology
-    "numerology", "pythagoras", "tetraktys", "sacred", "geometry", "abramelin",
-    
-    # Elements/Directions
-    "earth", "air", "fire", "water", "spirit", "east", "west", "north", "south",
-}
+# Default models
+DEFAULT_MODEL = 'all-MiniLM-L6-v2'
+BACKUP_MODEL = 'paraphrase-MiniLM-L3-v2'
 
 class WordEmbeddings:
     """
-    A class for handling word embeddings with a focus on occult terminology.
+    A class for managing word embeddings and related operations.
     
-    This class provides methods to load, process, and manipulate word embeddings
-    using transformer models. It includes functionality for similarity calculations
-    and neighborhood operations necessary for cellular automata in word vector space.
+    This class handles loading and caching of embeddings, numerological
+    calculations, and semantic similarity operations.
     """
     
     def __init__(
-        self, 
-        model_name: str = "bert-base-uncased", 
-        cache_dir: Optional[str] = None,
-        device: Optional[str] = None
+        self,
+        model_name: str = DEFAULT_MODEL,
+        cache_size: int = 10000
     ):
         """
         Initialize the WordEmbeddings class.
         
         Args:
-            model_name: Name of the transformer model to use for embeddings
-            cache_dir: Directory to cache embeddings
-            device: Device to use for computation ('cpu' or 'cuda')
+            model_name: Name of the SentenceTransformer model to use
+            cache_size: Size of the LRU cache for embeddings
         """
-        self.model_name = model_name
-        self.cache_dir = cache_dir or os.path.join(os.getcwd(), 'data', 'embeddings_cache')
+        self._model_name = model_name
+        self._cache_size = cache_size
+        self._terms: Set[str] = set()
+        self._initialize_model()
         
-        # Create cache directory if it doesn't exist
-        os.makedirs(self.cache_dir, exist_ok=True)
-        
-        # Check if GPU is available, otherwise use CPU
-        self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
-        logger.info(f"Using device: {self.device}")
-        
-        # Initialize tokenizer and model
-        logger.info(f"Loading model: {model_name}")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModel.from_pretrained(model_name)
-        self.model.to(self.device)
-        
-        # Dictionary to store word embeddings (word -> embedding vector)
-        self.embeddings: Dict[str, np.ndarray] = {}
-        
-        # Set of terms we're working with
-        self.terms: Set[str] = set()
-        
-    def load_terms(self, terms: Optional[Set[str]] = None) -> None:
-        """
-        Load a set of terms and compute/retrieve their embeddings.
-        
-        Args:
-            terms: Set of terms to load. If None, uses the default OCCULT_TERMS.
-        """
-        if terms is None:
-            terms = OCCULT_TERMS
-        
-        self.terms = terms
-        logger.info(f"Loading {len(terms)} terms")
-        
-        # First check if we have cached embeddings
-        cache_file = os.path.join(self.cache_dir, f"{self.model_name.replace('/', '_')}_embeddings.pkl")
-        if os.path.exists(cache_file):
+        # Configure embedding cache
+        self.get_embedding = lru_cache(maxsize=cache_size)(self._get_embedding_uncached)
+    
+    def _initialize_model(self):
+        """Initialize the embedding model with fallback options."""
+        try:
+            logger.info(f"Loading model: {self._model_name}")
+            self._model = SentenceTransformer(self._model_name)
+        except Exception as e:
+            logger.warning(f"Failed to load {self._model_name}: {e}")
+            logger.info(f"Attempting to load backup model: {BACKUP_MODEL}")
             try:
-                with open(cache_file, 'rb') as f:
-                    cached_data = pickle.load(f)
-                    cached_words = set(cached_data.keys())
-                    # Get intersection of our terms and cached terms
-                    available_terms = terms.intersection(cached_words)
-                    if available_terms:
-                        logger.info(f"Loaded {len(available_terms)} embeddings from cache")
-                        # Load available embeddings from cache
-                        for term in available_terms:
-                            self.embeddings[term] = cached_data[term]
-                    
-                    # Calculate embeddings for terms not in cache
-                    missing_terms = terms - available_terms
-                    if missing_terms:
-                        logger.info(f"Computing embeddings for {len(missing_terms)} new terms")
-                        self._compute_embeddings(missing_terms)
-            except Exception as e:
-                logger.error(f"Error loading cache: {e}. Computing embeddings from scratch.")
-                self._compute_embeddings(terms)
-        else:
-            logger.info("No cache found. Computing embeddings from scratch.")
-            self._compute_embeddings(terms)
-            
-        # Save updated cache
-        with open(cache_file, 'wb') as f:
-            pickle.dump(self.embeddings, f)
+                self._model = SentenceTransformer(BACKUP_MODEL)
+                self._model_name = BACKUP_MODEL
+            except Exception as e2:
+                logger.error(f"Failed to load backup model: {e2}")
+                raise RuntimeError("Could not initialize any embedding model")
     
-    def _compute_embeddings(self, terms: Set[str]) -> None:
+    def get_terms(self) -> Set[str]:
+        """Get the set of loaded terms.
+        
+        Returns:
+            Set of terms that have been loaded into the embeddings
         """
-        Compute embeddings for the given terms using the transformer model.
-        
-        Args:
-            terms: Set of terms to compute embeddings for
-        """
-        self.model.eval()  # Set model to evaluation mode
-        
-        # Process terms in batches to avoid memory issues
-        batch_size = 32
-        terms_list = list(terms)
-        
-        for i in range(0, len(terms_list), batch_size):
-            batch_terms = terms_list[i:i+batch_size]
-            
-            # Tokenize the terms
-            encoded_input = self.tokenizer(batch_terms, padding=True, truncation=True, 
-                                          return_tensors='pt').to(self.device)
-            
-            # Compute token embeddings
-            with torch.no_grad():
-                model_output = self.model(**encoded_input)
-                
-            # We use the CLS token embedding as the sentence embedding
-            sentence_embeddings = model_output.last_hidden_state[:, 0, :].cpu().numpy()
-            
-            # Store embeddings
-            for j, term in enumerate(batch_terms):
-                self.embeddings[term] = sentence_embeddings[j]
-                
-        logger.info(f"Computed embeddings for {len(terms)} terms")
+        return self._terms
     
-    def get_embedding(self, term: str) -> np.ndarray:
-        """
-        Get the embedding for a specific term.
+    def _get_embedding_uncached(self, term: str) -> np.ndarray:
+        """Get the embedding for a term without caching.
         
         Args:
             term: The term to get the embedding for
             
         Returns:
-            The embedding vector for the term
+            Numpy array containing the embedding vector
+        """
+        # Ensure the term is in our vocabulary
+        if term not in self._terms:
+            raise KeyError(f"Term '{term}' not found in loaded terms")
             
-        Raises:
-            KeyError: If the term has no computed embedding
-        """
-        if term in self.embeddings:
-            return self.embeddings[term]
-        
-        # If we don't have this term, compute its embedding
-        logger.info(f"Computing embedding for new term: {term}")
-        self._compute_embeddings({term})
-        return self.embeddings[term]
+        # Get embedding from model
+        with torch.no_grad():
+            embedding = self._model.encode([term], convert_to_numpy=True)[0]
+        return embedding
     
-    def get_similarity(self, term1: str, term2: str) -> float:
-        """
-        Calculate the cosine similarity between two terms.
+    def load_terms(self, terms: Union[List[str], Set[str]]) -> None:
+        """Load terms into the embeddings.
         
         Args:
-            term1: First term
-            term2: Second term
-            
-        Returns:
-            Cosine similarity between the term embeddings (0-1)
+            terms: List or set of terms to load
         """
-        vec1 = self.get_embedding(term1).reshape(1, -1)
-        vec2 = self.get_embedding(term2).reshape(1, -1)
-        return float(cosine_similarity(vec1, vec2)[0][0])
+        # Convert to set for uniqueness
+        terms_set = set(terms)
+        
+        # Add new terms
+        self._terms.update(terms_set)
+        
+        logger.info(f"Loaded {len(terms_set)} terms")
     
-    def get_nearest_neighbors(self, term: str, n: int = 5) -> List[Tuple[str, float]]:
+    def get_embedding_dim(self) -> int:
+        """Get the dimensionality of the embeddings.
+        
+        Returns:
+            Integer dimension of the embedding vectors
         """
-        Find the n nearest neighbors of a term in the embedding space.
+        # Get embedding for a test term
+        test_term = next(iter(self._terms)) if self._terms else "test"
+        return len(self._get_embedding_uncached(test_term))
+    
+    def find_similar_terms(
+        self,
+        term: str,
+        n: int = 10,
+        min_similarity: float = 0.5
+    ) -> List[Tuple[str, float]]:
+        """Find terms similar to the given term.
         
         Args:
-            term: The term to find neighbors for
-            n: Number of neighbors to retrieve
+            term: The term to find similar terms for
+            n: Maximum number of similar terms to return
+            min_similarity: Minimum cosine similarity threshold
             
         Returns:
-            List of (term, similarity) tuples for the nearest neighbors
+            List of (term, similarity) tuples
         """
-        if not self.terms:
-            raise ValueError("No terms loaded. Call load_terms() first.")
+        if term not in self._terms:
+            raise KeyError(f"Term '{term}' not found in loaded terms")
             
-        query_vec = self.get_embedding(term).reshape(1, -1)
+        # Get embedding for the query term
+        query_embedding = self.get_embedding(term)
         
         # Calculate similarities with all terms
         similarities = []
-        for other_term in self.terms:
-            if other_term == term:
-                continue
-                
-            other_vec = self.get_embedding(other_term).reshape(1, -1)
-            sim = float(cosine_similarity(query_vec, other_vec)[0][0])
-            similarities.append((other_term, sim))
-            
-        # Sort by similarity (descending) and return top n
-        return sorted(similarities, key=lambda x: x[1], reverse=True)[:n]
-    
-    def get_region_centroid(self, terms: List[str]) -> np.ndarray:
-        """
-        Calculate the centroid of a region defined by multiple terms.
+        for other_term in self._terms:
+            if other_term != term:
+                other_embedding = self.get_embedding(other_term)
+                similarity = np.dot(query_embedding, other_embedding)
+                if similarity >= min_similarity:
+                    similarities.append((other_term, float(similarity)))
         
-        Args:
-            terms: List of terms defining the region
-            
-        Returns:
-            Centroid vector of the region
-        """
-        embeddings = np.array([self.get_embedding(term) for term in terms])
-        return np.mean(embeddings, axis=0)
-    
-    def apply_vector_operation(
-        self, 
-        base_term: str, 
-        operation: str, 
-        magnitude: float = 1.0,
-        direction_term: Optional[str] = None
-    ) -> np.ndarray:
-        """
-        Apply a vector operation to a term's embedding.
-        
-        This is useful for cellular automata rules that transform embeddings.
-        
-        Args:
-            base_term: Term to apply the operation to
-            operation: Operation type ('shift', 'amplify', 'contrast')
-            magnitude: Magnitude of the operation
-            direction_term: For 'shift' operations, term defining the direction
-            
-        Returns:
-            The resulting vector after applying the operation
-        """
-        base_vec = self.get_embedding(base_term)
-        
-        if operation == 'shift' and direction_term:
-            # Shift the base vector toward or away from direction_term
-            direction_vec = self.get_embedding(direction_term)
-            direction = direction_vec - base_vec
-            # Normalize the direction vector
-            norm = np.linalg.norm(direction)
-            if norm > 0:
-                direction = direction / norm
-            return base_vec + (direction * magnitude)
-            
-        elif operation == 'amplify':
-            # Amplify the vector (multiply by magnitude)
-            norm = np.linalg.norm(base_vec)
-            if norm > 0:
-                normalized = base_vec / norm
-                return normalized * (norm * magnitude)
-            return base_vec
-            
-        elif operation == 'contrast':
-            # Increase contrast/distinctiveness of the vector
-            # For positive magnitude, move away from the origin
-            # For negative magnitude, move toward the origin
-            norm = np.linalg.norm(base_vec)
-            if norm > 0:
-                normalized = base_vec / norm
-                new_norm = norm * (1 + magnitude)
-                return normalized * new_norm
-            return base_vec
-            
-        else:
-            raise ValueError(f"Unknown operation: {operation}")
+        # Sort by similarity and return top n
+        similarities.sort(key=lambda x: x[1], reverse=True)
+        return similarities[:n]
     
     def find_numerological_significance(self, term: str) -> int:
-        """
-        Calculate a numerological value for a term using English Gematria.
+        """Calculate the numerological value of a term.
         
-        This implements a simple English alphanumeric cipher (A=1, B=2, etc.)
-        for numerological calculations in the occult tradition.
+        This implements a basic numerological system where:
+        A=1, B=2, ..., Z=26, then sum digits until single digit
+        (unless it's a master number: 11, 22, 33)
         
         Args:
-            term: The term to calculate numerological value for
+            term: Term to calculate value for
             
         Returns:
-            Numerological value
+            Numerological value (1-9, or 11, 22, 33)
         """
-        # Simple English Gematria (A=1, B=2, ...)
-        gematria_value = sum(
-            ord(c.upper()) - ord('A') + 1 
-            for c in term 
-            if c.isalpha()
-        )
+        # Basic letter to number mapping
+        letter_values = {chr(i): i-96 for i in range(97, 123)}
         
-        # Reduce to a single digit (theosophical reduction)
-        while gematria_value > 9 and gematria_value not in [11, 22, 33]:  # Keep master numbers
-            gematria_value = sum(int(digit) for digit in str(gematria_value))
+        # Sum letter values
+        total = sum(letter_values.get(c.lower(), 0) for c in term)
+        
+        # Check for master numbers
+        if total in {11, 22, 33}:
+            return total
             
-        return gematria_value
-
+        # Reduce to single digit
+        while total > 9:
+            total = sum(int(d) for d in str(total))
+            
+        return total
+    
+    def get_term_info(self, term: str) -> Dict[str, Any]:
+        """Get comprehensive information about a term.
+        
+        Args:
+            term: The term to get information for
+            
+        Returns:
+            Dictionary containing:
+            - embedding: The term's embedding vector
+            - numerological_value: The term's numerological value
+            - similar_terms: List of similar terms
+        """
+        return {
+            'embedding': self.get_embedding(term),
+            'numerological_value': self.find_numerological_significance(term),
+            'similar_terms': self.find_similar_terms(term, n=5)
+        }

@@ -59,88 +59,254 @@ class AutomataSystem:
         self,
         manifold: VectorManifold,
         rules_dict: Dict[str, Any],
-        sequences_dict: Dict[str, Any] = None,
+        sequences_dict: Dict[str, Any],
         evolution_pattern: EvolutionPattern = EvolutionPattern.LINEAR,
         save_path: Optional[str] = None
     ):
         """
         Initialize the automata system.
-        
+
         Args:
-            manifold: The vector manifold to evolve
-            rules_dict: Dictionary of available rules
-            sequences_dict: Dictionary of available rule sequences
-            evolution_pattern: Pattern to follow when applying rules
-            save_path: Directory to save system states and visualizations
+            manifold: The manifold to evolve
+            rules_dict: Dictionary mapping rule names to rule objects
+            sequences_dict: Dictionary mapping sequence names to sequence objects
+            evolution_pattern: Pattern to use for rule selection
+            save_path: Optional path to save system states
         """
         self.manifold = manifold
         self.rules = rules_dict
-        self.sequences = sequences_dict or {}
+        self.sequences = sequences_dict
         self.evolution_pattern = evolution_pattern
-        self.save_path = save_path
+        self.save_path = Path(save_path) if save_path else None
         
         # Initialize system state
         self.generation = 0
-        self.history = []  # List of SystemState objects
-        self.active_sequence = None
-        self.sequence_position = 0
+        self.history = []
         
-        logger.info(f"Initialized AutomataSystem with {len(self.rules)} rules and {len(self.sequences)} sequences")
-        
-        # Create save directory if specified
         if self.save_path:
-            Path(self.save_path).mkdir(parents=True, exist_ok=True)
+            self.save_path.mkdir(parents=True, exist_ok=True)
+            
+        logger.info(f"Initialized automata system with {len(self.rules)} rules and {len(self.sequences)} sequences")
     
     def evolve(self, generations: int = 1) -> None:
         """
         Evolve the system for a specified number of generations.
-        
+
         Args:
             generations: Number of generations to evolve
         """
-        logger.info(f"Evolving system for {generations} generations following {self.evolution_pattern.name} pattern")
-        
         for _ in range(generations):
-            # Select and apply rule based on evolution pattern
+            # Select next rule based on evolution pattern
             rule_name = self._select_next_rule()
             if rule_name and rule_name in self.rules:
+                # Apply the selected rule
                 rule = self.rules[rule_name]
-                rule.apply(self.manifold, self.generation)
-                
-                # Capture system state
-                self._capture_state([rule_name])
-                
-                # Increment generation
-                self.generation += 1
-                
-                logger.info(f"Generation {self.generation}: Applied rule '{rule_name}'")
-            else:
-                logger.warning(f"No valid rule selected for generation {self.generation}")
+                # Get all cell vectors that need to be transformed
+                cell_vectors = np.array([cell.centroid for cell in self.manifold.cells.values()])
+                # Construct evolution rules
+                evolution_rules = {
+                    'transformation': rule.vector_transformation,
+                    'magnitude': rule.parameters.magnitude,
+                    'cell_type_weights': rule.parameters.cell_type_weights,
+                    'numerological_weights': rule.parameters.numerological_weights
+                }
+                # Transform the vectors
+                transformed_vectors = self.manifold.transform(cell_vectors, evolution_rules)
+                # Update cell centroids
+                for i, (cell_id, cell) in enumerate(self.manifold.cells.items()):
+                    cell.centroid = transformed_vectors[i]
+            
+            # Increment generation counter
+            self.generation += 1
+            
+            # Capture system state
+            self._capture_state([rule_name] if rule_name else [])
     
     def apply_sequence(self, sequence_name: str) -> None:
         """
-        Apply a named sequence of rules.
-        
+        Apply a named sequence of rules to the system.
+
         Args:
             sequence_name: Name of the sequence to apply
         """
         if sequence_name not in self.sequences:
-            logger.error(f"Sequence '{sequence_name}' not found")
+            logger.warning(f"Sequence '{sequence_name}' not found")
             return
             
         sequence = self.sequences[sequence_name]
-        logger.info(f"Applying sequence '{sequence_name}' to manifold")
-        
         sequence.apply(self.manifold, self.generation)
-        
-        # Capture system state with all rules in the sequence
-        rule_names = [rule.name for rule in sequence.rules]
-        self._capture_state(rule_names)
-        
-        # Increment generation by the number of rules in the sequence
         self.generation += len(sequence.rules)
         
-        logger.info(f"Sequence '{sequence_name}' applied successfully")
+        # Capture final state after sequence
+        self._capture_state([r.name for r in sequence.rules])
+    
+    def _capture_state(self, active_rules: List[str]) -> None:
+        """
+        Capture the current state of the system.
+
+        Args:
+            active_rules: List of currently active rule names
+        """
+        state = SystemState(
+            generation=self.generation,
+            active_rules=active_rules,
+            manifold_state=self.manifold.get_manifold_state(),
+            timestamp=time.time(),
+            metrics=self._calculate_system_metrics()
+        )
+        
+        # Add to history
+        self.history.append(state)
+        
+        # Save state if path is configured
+        if self.save_path:
+            self._save_state(state)
+    
+    def _calculate_system_metrics(self) -> Dict[str, float]:
+        """Calculate metrics about the current system state."""
+        metrics = {}
+        
+        # Calculate basic metrics about the manifold
+        manifold_state = self.manifold.get_manifold_state()
+        
+        # Average cell connectivity
+        if "avg_connectivity" in manifold_state:
+            metrics["avg_connectivity"] = manifold_state["avg_connectivity"]
+            
+        # Distribution of cell types
+        if "type_counts" in manifold_state:
+            total_cells = sum(manifold_state["type_counts"].values())
+            for cell_type, count in manifold_state["type_counts"].items():
+                metrics[f"cell_type_{cell_type}_ratio"] = count / total_cells
+                
+        # Distribution of numerological values
+        if "num_value_counts" in manifold_state:
+            total_values = sum(manifold_state["num_value_counts"].values())
+            for value, count in manifold_state["num_value_counts"].items():
+                metrics[f"num_value_{value}_ratio"] = count / total_values
+                
+        return metrics
+    
+    def _save_state(self, state: SystemState) -> None:
+        """
+        Save a system state to disk.
+
+        Args:
+            state: The state to save
+        """
+        if not self.save_path:
+            return
+            
+        # Create state directory for this generation
+        state_dir = self.save_path / f"generation_{state.generation}"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save state metadata
+        metadata = {
+            "generation": state.generation,
+            "active_rules": state.active_rules,
+            "timestamp": state.timestamp,
+            "metrics": state.metrics
+        }
+        
+        with open(state_dir / "metadata.json", "w") as f:
+            json.dump(metadata, f, indent=2)
+            
+        # Save manifold state (if supported)
+        if hasattr(self.manifold, "save_state"):
+            self.manifold.save_state(state_dir / "manifold_state.npz")
+    
+    def get_history_summary(self) -> List[Dict[str, Any]]:
+        """Get a summary of the system's evolution history."""
+        summary = []
+        for state in self.history:
+            summary.append({
+                "generation": state.generation,
+                "active_rules": state.active_rules,
+                "timestamp": state.timestamp,
+                "metrics": state.metrics
+            })
+        return summary
+    
+    def reset(self) -> None:
+        """Reset the system to its initial state."""
+        self.generation = 0
+        self.history = []
+        # Reset manifold if supported
+        if hasattr(self.manifold, "reset"):
+            self.manifold.reset()
+            
+    def _calculate_thelemic_resonance(self, rule: Any) -> float:
+        """
+        Calculate how well a rule resonates with the current system state
+        according to Thelemic principles.
+        
+        Args:
+            rule: The rule to evaluate
+            
+        Returns:
+            Resonance score between 0.0 and 1.0
+        """
+        # Get current manifold state
+        manifold_state = self.manifold.get_manifold_state()
+        
+        # Base resonance on several factors:
+        
+        # 1. Numerological correspondence
+        num_resonance = 0.0
+        if "num_value_counts" in manifold_state:
+            # Check if rule's numerological values align with manifold state
+            rule_values = set()
+            if hasattr(rule, "parameters") and hasattr(rule.parameters, "numerological_weights"):
+                rule_values = set(rule.parameters.numerological_weights.keys())
+            
+            manifold_values = set(manifold_state["num_value_counts"].keys())
+            # Calculate overlap
+            if rule_values and manifold_values:
+                num_resonance = len(rule_values & manifold_values) / len(rule_values | manifold_values)
+        
+        # 2. Cell type correspondence
+        type_resonance = 0.0
+        if "type_counts" in manifold_state:
+            # Check if rule's cell type weights align with manifold state
+            rule_types = set()
+            if hasattr(rule, "parameters") and hasattr(rule.parameters, "cell_type_weights"):
+                rule_types = set(rule.parameters.cell_type_weights.keys())
+            
+            manifold_types = set(manifold_state["type_counts"].keys())
+            # Calculate overlap
+            if rule_types and manifold_types:
+                type_resonance = len(rule_types & manifold_types) / len(rule_types | manifold_types)
+        
+        # 3. Vibrational correspondence
+        vib_resonance = 0.0
+        if hasattr(rule, "parameters") and hasattr(rule.parameters, "vibration_direction"):
+            # Different vibration directions are more appropriate at different stages
+            # This is a simplified model - could be made more sophisticated
+            cycle_position = self.generation % 7  # 7 is significant in Thelema
+            
+            # Map cycle positions to preferred vibration directions
+            preferred_directions = {
+                0: "ASCENDING",    # Beginning of cycle - rise
+                1: "EXPANDING",    # Early cycle - grow
+                2: "HARMONIZING", # Mid cycle - stabilize
+                3: "POLARIZING",  # Mid cycle - differentiate
+                4: "CONTRACTING", # Late cycle - consolidate
+                5: "DESCENDING",  # End cycle - ground
+                6: "HARMONIZING"  # Transition - rebalance
+            }
+            
+            if rule.parameters.vibration_direction.name == preferred_directions[cycle_position]:
+                vib_resonance = 1.0
+            else:
+                vib_resonance = 0.3  # Base resonance for any vibration
+        
+        # Combine factors (weights could be adjusted)
+        resonance = (num_resonance * 0.4 + 
+                    type_resonance * 0.3 + 
+                    vib_resonance * 0.3)
+                    
+        return resonance
     
     def _select_next_rule(self) -> Optional[str]:
         """
@@ -216,76 +382,6 @@ class AutomataSystem:
             return rule_names[self.generation % len(rule_names)]
             
         return None
-    
-    def _calculate_thelemic_resonance(self, rule: Any) -> float:
-        """
-        Calculate how well a rule resonates with the current system state
-        according to Thelemic principles.
-        
-        Args:
-            rule: The rule to evaluate
-            
-        Returns:
-            Resonance score between 0.0 and 1.0
-        """
-        # This is a placeholder for a more sophisticated calculation
-        # In a full implementation, this would analyze the current manifold state
-        # and determine which rule best aligns with the system's "True Will"
-        
-        # For now, use a simple calculation based on the rule's parameters
-        base_score = 0.5
-        
-        # Adjust based on generation number - different rules resonate at different times
-        phase = (self.generation % 22) / 22.0  # 22 = number of major arcana
-        
-        # Each rule has peak resonance at a different phase of the cycle
-        rule_name = rule.name.lower()
-        if "star" in rule_name:
-            peak_phase = 17/22  # Star is arcana 17
-        elif "tower" in rule_name:
-            peak_phase = 16/22
-        elif "lovers" in rule_name:
-            peak_phase = 6/22
-        else:
-            # Assign a random but consistent phase for other rules
-            peak_phase = sum(ord(c) for c in rule_name) % 22 / 22
-            
-        # Calculate distance from peak (in phase space)
-        phase_distance = min(abs(phase - peak_phase), 1 - abs(phase - peak_phase))
-        
-        # Higher score when closer to peak
-        resonance = base_score + (1 - phase_distance)
-        
-        return resonance
-    
-    def _capture_state(self, active_rules: List[str]) -> None:
-        """
-        Capture the current state of the system.
-        
-        Args:
-            active_rules: Names of rules that were applied in this generation
-        """
-        # Get manifold state
-        manifold_state = self.manifold.get_manifold_state()
-        
-        # Calculate some metrics about the system state
-        metrics = self._calculate_system_metrics()
-        
-        # Create system state object
-        state = SystemState(
-            generation=self.generation,
-            active_rules=active_rules,
-            manifold_state=manifold_state,
-            timestamp=time.time(),
-            metrics=metrics
-        )
-        
-        # Add to history
-        self.history.append(state)
-        
-        # Save state if save path is specified
-        if self.save_path:
-            self._save_state(state)
     
     def _calculate_system_metrics(self) -> Dict[str, float]:
         """
@@ -385,7 +481,7 @@ class AutomataSystem:
             
         return summary
     
-    def reset(self) -> None:
+    def _reset(self) -> None:
         """Reset the system to its initial state."""
         self.generation = 0
         self.history = []
