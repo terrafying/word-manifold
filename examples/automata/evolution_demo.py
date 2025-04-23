@@ -54,8 +54,8 @@ def demonstrate_evolution(system: AutomataSystem):
     logger.info("\nApplying individual rules:")
     for rule_name in ["great_work", "equilibrium", "tower"]:
         rule = system.rules[rule_name]
-        logger.info(f"\nApplying rule: {rule.name}")
-        logger.info(f"Description: {rule.description}")
+        logger.info("Applying rule: %s" % rule.name)
+        logger.info("Description: %s" % rule.description)
         rule.apply(system.manifold, system.generation)
         state = system.manifold.get_manifold_state()
         # logger.info(f"System state after rule: {state}")
@@ -64,18 +64,18 @@ def demonstrate_evolution(system: AutomataSystem):
     logger.info("\nApplying rule sequences:")
     for seq_name in ["great_work", "thelemic"]:
         sequence = system.sequences[seq_name]
-        logger.info(f"\nApplying sequence: {sequence.name}")
-        logger.info(f"Description: {sequence.description}")
+        logger.info("Applying sequence: %s" % sequence.name)
+        logger.info("Description: %s" % sequence.description)
         sequence.apply(system.manifold, system.generation)
         state = system.get_history_summary()
 
-        logger.info(f"System state after sequence: {state}")
+        logger.info("System state after sequence: %s" % state)
         
     # Multiple generation evolution
     logger.info("\nEvolving system for multiple generations:")
     system.evolve(generations=5)
     logger.info(f"Final generation: {system.generation}")
-    logger.info(f"Final state: {system.get_history_summary()}")
+    logger.info("Final state: %s" % system.get_history_summary())
 
 def main():
     # Set up system

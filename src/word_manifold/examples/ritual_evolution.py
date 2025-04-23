@@ -11,40 +11,30 @@ of discovering one's True Will.
 """
 
 import os
-import sys
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-from ..visualization.simple_3d_visualizer import Simple3DVisualizer
 import re
 import string
-import random
 from pathlib import Path
 from typing import Dict, List, Set, Tuple, Optional, Union, Any
-from enum import Enum, auto
-from dataclasses import dataclass
 import datetime
-import time
-import math
 import imageio
-import glob
 from PIL import Image, ImageDraw, ImageFont
 import PyPDF2
-import io
+import subprocess
 import json
 import pickle
-import requests
 from bs4 import BeautifulSoup
 import nltk
 from nltk.tokenize import word_tokenize, sent_tokenize
 from nltk.corpus import stopwords
-from collections import Counter, defaultdict
+from collections import defaultdict
 import hashlib
 import functools
 
 from word_manifold.embeddings.word_embeddings import WordEmbeddings
-from word_manifold.manifold.vector_manifold import VectorManifold, CellType, Cell
+from word_manifold.manifold.vector_manifold import VectorManifold, CellType
 from word_manifold.automata.cellular_rules import (
     CellularRule, RuleParameterSet, RuleSequence,
     HermeticPrinciple, ElementalForce, VibrationDirection,
@@ -217,7 +207,6 @@ class RitualWorking:
             
             # Create MP4 with enhanced quality
             try:
-                import subprocess
                 
                 # Prepare FFmpeg command with enhanced settings
                 ffmpeg_cmd = [
@@ -586,7 +575,7 @@ class RitualWorking:
         
         # Create manifold with 22 cells (corresponding to the 22 major arcana)
         self.manifold = VectorManifold(
-            word_embeddings=self.embeddings,
+            embeddings=self.embeddings,
             n_cells=22,
             random_state=93,  # Occult significance
             reduction_dims=2  # For visualization
@@ -603,8 +592,6 @@ class RitualWorking:
         
         # Get predefined rules
         self.rules = create_predefined_rules()
-        
-        # Define additional Thelemic rules specific to this ritual
         
         # The True Will Rule - Based on discovering one's proper path
         true_will_params = RuleParameterSet(
@@ -646,10 +633,7 @@ class RitualWorking:
             parameters=liberty_params,
             vector_transformation="repel",
             esoteric_correspondence="The Thelemic Law of Liberty - 'Do what thou wilt shall be the whole of the Law, Love is the law, love under will'"
-        )
-        
-        # Define ritual sequences
-        
+        )      
         # Thelemic Initiation Sequence
         initiation_sequence = RuleSequence(
             name="Thelemic Initiation",

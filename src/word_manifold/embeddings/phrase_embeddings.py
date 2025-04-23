@@ -10,12 +10,19 @@ import numpy as np
 import torch
 from transformers import AutoTokenizer, AutoModel
 import spacy
-from typing import List, Dict, Tuple, Optional, Union
+from typing import List, Dict, Tuple, Optional, Union, Any
 import logging
 from collections import Counter, defaultdict
 from spacy.tokens import Token
 from functools import lru_cache
 from tqdm import tqdm
+from transformers import (
+    AutoModelForSequenceClassification,
+    pipeline
+)
+
+# Model configuration
+BACKUP_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 # Configure module logger
 logger = logging.getLogger(__name__)
@@ -42,7 +49,7 @@ if not logger.handlers:
     logger.addHandler(debug_handler)
 
 # Load spaCy model with improved error handling
-def load_spacy_model(model_name: str = 'en_core_web_trf') -> spacy.language.Language:
+def load_spacy_model(model_name: str = 'en_core_web_lg') -> spacy.language.Language:
     """Load spaCy model with fallback options."""
     try:
         logger.info(f"Loading spaCy model '{model_name}'")
@@ -54,25 +61,25 @@ def load_spacy_model(model_name: str = 'en_core_web_trf') -> spacy.language.Lang
             return spacy.load(model_name)
         except Exception as e:
             logger.error(f"Failed to download {model_name}: {e}")
-            logger.info("Falling back to en_core_web_lg")
+            logger.info("Falling back to en_core_web_sm")
             try:
-                return spacy.load('en_core_web_lg')
+                return spacy.load('en_core_web_sm')
             except OSError:
-                spacy.cli.download('en_core_web_lg')
-                return spacy.load('en_core_web_lg')
+                spacy.cli.download('en_core_web_sm')
+                return spacy.load('en_core_web_sm')
 
 nlp = load_spacy_model()
 
 # Enhanced emotion anchors with more nuanced categories
 EMOTION_CATEGORIES = {
-    'joy': ['happy', 'joyful', 'delighted', 'elated', 'ecstatic', 'content'],
-    'sadness': ['sad', 'depressed', 'gloomy', 'melancholy', 'heartbroken', 'grieving'],
-    'anger': ['angry', 'furious', 'enraged', 'hostile', 'irritated', 'outraged'],
-    'fear': ['afraid', 'scared', 'terrified', 'anxious', 'panicked', 'worried'],
-    'surprise': ['surprised', 'amazed', 'astonished', 'shocked', 'startled', 'stunned'],
-    'disgust': ['disgusted', 'repulsed', 'revolted', 'appalled', 'nauseated', 'offended'],
-    'trust': ['trusting', 'confident', 'secure', 'reliable', 'faithful', 'assured'],
-    'anticipation': ['expectant', 'eager', 'excited', 'hopeful', 'optimistic', 'ready']
+    'joy': ['happy', 'joyful', 'delighted', 'elated', 'ecstatic', 'content', 'pleased'],
+    'sadness': ['sad', 'depressed', 'gloomy', 'melancholy', 'heartbroken', 'grieving', 'unhappy'],
+    'anger': ['angry', 'furious', 'enraged', 'hostile', 'irritated', 'outraged', 'mad'],
+    'fear': ['afraid', 'scared', 'terrified', 'anxious', 'panicked', 'worried', 'frightened'],
+    'surprise': ['surprised', 'amazed', 'astonished', 'shocked', 'startled', 'stunned', 'unexpected'],
+    'disgust': ['disgusted', 'repulsed', 'revolted', 'appalled', 'nauseated', 'offended', 'gross'],
+    'trust': ['trusting', 'confident', 'secure', 'reliable', 'faithful', 'assured', 'believing'],
+    'anticipation': ['expectant', 'eager', 'excited', 'hopeful', 'optimistic', 'ready', 'awaiting']
 }
 
 # Initialize emotion vectors with caching
@@ -80,17 +87,38 @@ EMOTION_CATEGORIES = {
 def get_emotion_vector(emotion: str) -> np.ndarray:
     """Get cached emotion vector for a category."""
     words = EMOTION_CATEGORIES[emotion]
-    vectors = [nlp(word).vector for word in words if nlp(word).has_vector]
+    vectors = []
+    
+    # Try each word in the category
+    for word in words:
+        token = nlp(word)[0]
+        if token.has_vector:
+            vectors.append(token.vector)
+    
     if not vectors:
-        logger.warning(f"No vectors found for emotion {emotion}")
-        return np.zeros(nlp.vocab.vectors_length)
-    return np.mean(vectors, axis=0)
+        logger.warning(f"No vectors found for emotion {emotion}, using fallback method")
+        # Try getting vector directly from word embeddings
+        try:
+            # Use spaCy's vocab directly
+            vector = nlp.vocab.get_vector(words[0])
+            if np.any(vector):
+                return vector / np.linalg.norm(vector)
+        except KeyError:
+            logger.error(f"Could not find vector for any words in {emotion} category")
+            # Return normalized random vector as last resort
+            vector = np.random.randn(nlp.vocab.vectors_length)
+            return vector / np.linalg.norm(vector)
+    
+    # Average the vectors and normalize
+    avg_vector = np.mean(vectors, axis=0)
+    return avg_vector / np.linalg.norm(avg_vector)
 
-# Initialize emotion anchors with normalization
-EMOTION_ANCHORS = {
-    emotion: get_emotion_vector(emotion) / np.linalg.norm(get_emotion_vector(emotion))
-    for emotion in EMOTION_CATEGORIES
-}
+# Initialize emotion anchors
+EMOTION_ANCHORS = {}
+for emotion in EMOTION_CATEGORIES:
+    vector = get_emotion_vector(emotion)
+    if np.any(vector):  # Only add emotions with non-zero vectors
+        EMOTION_ANCHORS[emotion] = vector
 
 class PhraseEmbedding:
     """
@@ -114,27 +142,36 @@ class PhraseEmbedder:
     def __init__(
         self,
         model_name: str = "BAAI/bge-large-en-v1.5",  # Updated to use a more recent model
+        emotion_model_name: str = "SamLowe/roberta-base-go_emotions",
+        cache_size: int = 1000,
         use_gpu: bool = True,
-        batch_size: int = 32
+        batch_size: int = 32,
+        max_length: int = 8192
     ):
-        """Initialize the embedder with specified model."""
+        """
+        Initialize the PhraseEmbedder.
+        
+        Args:
+            model_name: Name of the embedding model
+            emotion_model_name: Name of the emotion analysis model
+            cache_size: Size of the LRU cache
+            use_gpu: Whether to use GPU if available
+            batch_size: Default batch size for processing
+            max_length: Maximum sequence length
+        """
         self.model_name = model_name
+        self.emotion_model_name = emotion_model_name
+        self.cache_size = cache_size
         self.batch_size = batch_size
+        self.max_length = max_length
         self.device = torch.device('cuda' if torch.cuda.is_available() and use_gpu else 'cpu')
         
-        # Load models with error handling
-        logger.info(f"Loading {model_name} model and tokenizer...")
-        try:
-            self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-            self.model = AutoModel.from_pretrained(model_name).to(self.device)
-            self.model.eval()  # Set to evaluation mode
-        except Exception as e:
-            logger.error(f"Failed to load {model_name}: {e}")
-            logger.info("Falling back to all-MiniLM-L6-v2")
-            self.model_name = "sentence-transformers/all-MiniLM-L6-v2"
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            self.model = AutoModel.from_pretrained(self.model_name).to(self.device)
-            self.model.eval()
+        # Initialize models
+        self._initialize_models()
+        
+        # Configure caches
+        self.get_embedding = lru_cache(maxsize=cache_size)(self._get_embedding_uncached)
+        self.get_emotion_vector = lru_cache(maxsize=cache_size)(self._get_emotion_vector_uncached)
         
         # Use the globally loaded spaCy model
         self.nlp = nlp
@@ -144,6 +181,39 @@ class PhraseEmbedder:
         
         # Initialize emotion cache
         self._emotion_cache = {}
+    
+    def _initialize_models(self) -> None:
+        """Initialize embedding and emotion models with fallback options."""
+        # Initialize embedding model
+        try:
+            logger.info(f"Loading embedding model: {self.model_name}")
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
+            self.model = AutoModel.from_pretrained(self.model_name, trust_remote_code=True).to(self.device)
+            self.model.eval()
+        except Exception as e:
+            logger.warning(f"Failed to load {self.model_name}: {e}")
+            logger.info(f"Attempting to load backup model: {BACKUP_MODEL}")
+            try:
+                self.model_name = BACKUP_MODEL
+                self.tokenizer = AutoTokenizer.from_pretrained(BACKUP_MODEL, trust_remote_code=True)
+                self.model = AutoModel.from_pretrained(BACKUP_MODEL, trust_remote_code=True).to(self.device)
+                self.model.eval()
+            except Exception as e2:
+                logger.error(f"Failed to load backup model: {e2}")
+                raise RuntimeError("Could not initialize embedding model")
+        
+        # Initialize emotion analysis model
+        try:
+            logger.info(f"Loading emotion model: {self.emotion_model_name}")
+            self.emotion_pipeline = pipeline(
+                "text-classification",
+                model=self.emotion_model_name,
+                device=0 if torch.cuda.is_available() else -1,
+                top_k=None
+            )
+        except Exception as e:
+            logger.error(f"Failed to load emotion model: {e}")
+            raise RuntimeError("Could not initialize emotion analysis model")
     
     def _register_extensions(self):
         """Register all custom spaCy extensions."""
@@ -173,135 +243,236 @@ class PhraseEmbedder:
         return False
 
     @torch.no_grad()
-    def embed_batch(self, texts: List[str]) -> List[np.ndarray]:
-        """Efficiently embed a batch of texts using the transformer model."""
-        # Tokenize all texts
-        encoded = self.tokenizer(
-            texts,
+    def _get_embedding_uncached(self, text: str) -> np.ndarray:
+        """Get embedding for text without caching.
+        
+        Args:
+            text: The text to embed
+            
+        Returns:
+            Numpy array containing the embedding vector
+        """
+        # Add instruction for query-style embedding
+        query = f'Instruct: Represent this text for retrieval\nQuery: {text}'
+        
+        # Tokenize and get embedding
+        inputs = self.tokenizer(
+            query,
+            max_length=self.max_length,
             padding=True,
             truncation=True,
-            max_length=512,
             return_tensors='pt'
         ).to(self.device)
         
-        # Get model outputs
-        outputs = self.model(**encoded)
+        outputs = self.model(**inputs)
         
-        # Use mean pooling
-        attention_mask = encoded['attention_mask']
-        token_embeddings = outputs.last_hidden_state
-        input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-        embeddings = torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+        # Use last token pooling
+        attention_mask = inputs['attention_mask']
+        last_hidden = outputs.last_hidden_state
         
-        # Convert to numpy and normalize
-        embeddings = embeddings.cpu().numpy()
-        embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)
+        if attention_mask[:, -1].sum() == attention_mask.shape[0]:
+            pooled = last_hidden[:, -1]
+        else:
+            sequence_lengths = attention_mask.sum(dim=1) - 1
+            batch_size = last_hidden.shape[0]
+            pooled = last_hidden[torch.arange(batch_size, device=self.device), sequence_lengths]
         
-        return embeddings
-
-    def analyze_emotions(self, doc) -> Dict[str, float]:
-        """
-        Analyze the emotional content of a document using improved vector comparison
-        and contextual analysis.
-        """
-        # Get document vector
-        doc_vector = doc.vector / np.linalg.norm(doc.vector)
+        # Normalize embedding
+        embedding = torch.nn.functional.normalize(pooled, p=2, dim=1)
+        return embedding.cpu().numpy()[0]
+    
+    def _get_emotion_vector_uncached(self, text: str) -> np.ndarray:
+        """Get emotion vector for text without caching.
         
-        # Calculate emotion scores using cosine similarity
-        emotion_scores = {}
-        for emotion, anchor in EMOTION_ANCHORS.items():
-            similarity = np.dot(doc_vector, anchor)
-            # Apply sigmoid to bound scores between 0 and 1
-            emotion_scores[emotion] = 1 / (1 + np.exp(-5 * (similarity - 0.5)))
-        
-        # Adjust scores based on negation and intensity
-        for token in doc:
-            if token._.is_negated:
-                # Invert emotion scores for negated contexts
-                for emotion in emotion_scores:
-                    emotion_scores[emotion] = 1 - emotion_scores[emotion]
+        Args:
+            text: The text to analyze
             
-            # Adjust for intensity modifiers
-            intensity_words = {'very', 'extremely', 'incredibly', 'barely', 'slightly', 'somewhat'}
-            if token.lower_ in intensity_words:
-                next_token = token.nbor() if token.i + 1 < len(doc) else None
-                if next_token:
-                    modifier = 1.5 if token.lower_ in {'very', 'extremely', 'incredibly'} else 0.5
-                    for emotion in emotion_scores:
-                        emotion_scores[emotion] = np.clip(emotion_scores[emotion] * modifier, 0, 1)
+        Returns:
+            Numpy array containing emotion scores
+        """
+        # Get emotion predictions
+        result = self.emotion_pipeline(text)[0]
         
-        return emotion_scores
-
-    def analyze_structure(self, doc) -> Dict[str, float]:
+        # Convert to normalized vector
+        emotions = {label: score for label, score in zip(result['labels'], result['scores'])}
+        emotion_vector = np.array(list(emotions.values()))
+        
+        # Normalize to unit vector
+        emotion_vector = emotion_vector / np.linalg.norm(emotion_vector)
+        return emotion_vector
+    
+    def get_embeddings_batch(
+        self,
+        texts: List[str],
+        batch_size: Optional[int] = None,
+        show_progress: bool = False
+    ) -> Dict[str, np.ndarray]:
+        """Get embeddings for multiple texts efficiently using batching.
+        
+        Args:
+            texts: List of texts to embed
+            batch_size: Optional custom batch size
+            show_progress: Whether to show progress bar
+            
+        Returns:
+            Dictionary mapping texts to their embedding vectors
         """
-        Analyze the structural properties of the text, including rhythm,
-        complexity, and coherence.
+        batch_size = batch_size or self.batch_size
+        results = {}
+        
+        # Create iterator
+        batches = range(0, len(texts), batch_size)
+        if show_progress:
+            batches = tqdm(batches, desc="Getting embeddings")
+        
+        for i in batches:
+            batch = texts[i:i + batch_size]
+            # Add instruction for each text
+            queries = [f'Instruct: Represent this text for retrieval\nQuery: {text}' for text in batch]
+            
+            # Tokenize batch
+            inputs = self.tokenizer(
+                queries,
+                max_length=self.max_length,
+                padding=True,
+                truncation=True,
+                return_tensors='pt'
+            ).to(self.device)
+            
+            outputs = self.model(**inputs)
+            
+            # Use last token pooling for batch
+            attention_mask = inputs['attention_mask']
+            last_hidden = outputs.last_hidden_state
+            
+            if attention_mask[:, -1].sum() == attention_mask.shape[0]:
+                pooled = last_hidden[:, -1]
+            else:
+                sequence_lengths = attention_mask.sum(dim=1) - 1
+                batch_size = last_hidden.shape[0]
+                pooled = last_hidden[torch.arange(batch_size, device=self.device), sequence_lengths]
+            
+            # Normalize embeddings
+            embeddings = torch.nn.functional.normalize(pooled, p=2, dim=1)
+            
+            # Store results
+            for text, embedding in zip(batch, embeddings.cpu().numpy()):
+                results[text] = embedding
+                
+        return results
+    
+    def get_emotion_vectors_batch(
+        self,
+        texts: List[str],
+        batch_size: Optional[int] = None,
+        show_progress: bool = False
+    ) -> Dict[str, np.ndarray]:
+        """Get emotion vectors for multiple texts efficiently using batching.
+        
+        Args:
+            texts: List of texts to analyze
+            batch_size: Optional custom batch size
+            show_progress: Whether to show progress bar
+            
+        Returns:
+            Dictionary mapping texts to their emotion vectors
         """
-        # Initialize structure parameters
-        structure = {
-            'rhythm_score': 0.0,
-            'complexity_score': 0.0,
-            'coherence_score': 0.0,
-            'emphasis_score': 0.0
+        batch_size = batch_size or self.batch_size
+        results = {}
+        
+        # Create iterator
+        batches = range(0, len(texts), batch_size)
+        if show_progress:
+            batches = tqdm(batches, desc="Getting emotion vectors")
+        
+        for i in batches:
+            batch = texts[i:i + batch_size]
+            
+            # Get emotion predictions for batch
+            predictions = self.emotion_pipeline(batch)
+            
+            # Process each prediction
+            for text, result in zip(batch, predictions):
+                # Convert to normalized vector
+                emotions = {label: score for label, score in zip(result['labels'], result['scores'])}
+                emotion_vector = np.array(list(emotions.values()))
+                emotion_vector = emotion_vector / np.linalg.norm(emotion_vector)
+                results[text] = emotion_vector
+        
+        return results
+    
+    def analyze_text(
+        self,
+        text: str,
+        return_emotions: bool = True
+    ) -> Dict[str, Any]:
+        """Analyze text for semantic and emotional content.
+        
+        Args:
+            text: The text to analyze
+            return_emotions: Whether to include emotion analysis
+            
+        Returns:
+            Dictionary containing analysis results
+        """
+        results = {
+            'embedding': self.get_embedding(text),
+            'length': len(text.split())
         }
         
-        # Analyze rhythm using syllable patterns
-        syllable_pattern = []
-        for token in doc:
-            if token.is_alpha and not token.is_stop:
-                syllable_count = self._count_syllables(token.text)
-                syllable_pattern.append(syllable_count)
+        if return_emotions:
+            results['emotions'] = self.get_emotion_vector(text)
         
-        if syllable_pattern:
-            # Calculate rhythm score based on pattern regularity
-            differences = np.diff(syllable_pattern)
-            structure['rhythm_score'] = 1.0 / (1.0 + np.std(differences))
+        return results
+    
+    def analyze_texts_batch(
+        self,
+        texts: List[str],
+        return_emotions: bool = True,
+        batch_size: Optional[int] = None,
+        show_progress: bool = False
+    ) -> Dict[str, Dict[str, Any]]:
+        """Analyze multiple texts efficiently using batching.
         
-        # Analyze complexity
-        word_lengths = [len(token.text) for token in doc if token.is_alpha]
-        if word_lengths:
-            avg_word_length = np.mean(word_lengths)
-            structure['complexity_score'] = np.clip(avg_word_length / 12.0, 0, 1)
-        
-        # Analyze coherence using dependency distances
-        distances = []
-        for token in doc:
-            if token.head != token:  # Skip root
-                distance = abs(token.i - token.head.i)
-                distances.append(distance)
-        
-        if distances:
-            avg_distance = np.mean(distances)
-            structure['coherence_score'] = 1.0 / (1.0 + 0.1 * avg_distance)
-        
-        # Analyze emphasis using caps, punctuation, and special tokens
-        emphasis_markers = sum(1 for token in doc if token.is_upper or token.text in "!?*")
-        structure['emphasis_score'] = np.clip(emphasis_markers / len(doc), 0, 1)
-        
-        return structure
-
-    def _count_syllables(self, word: str) -> int:
+        Args:
+            texts: List of texts to analyze
+            return_emotions: Whether to include emotion analysis
+            batch_size: Optional custom batch size
+            show_progress: Whether to show progress bar
+            
+        Returns:
+            Dictionary mapping texts to their analysis results
         """
-        Count the number of syllables in a word using improved heuristics.
-        """
-        word = word.lower()
-        count = 0
-        vowels = "aeiouy"
-        prev_is_vowel = False
+        # Get embeddings
+        embeddings = self.get_embeddings_batch(
+            texts,
+            batch_size=batch_size,
+            show_progress=show_progress
+        )
         
-        # Handle special cases
-        if word.endswith('e'):
-            word = word[:-1]
+        # Get emotion vectors if requested
+        emotion_vectors = {}
+        if return_emotions:
+            emotion_vectors = self.get_emotion_vectors_batch(
+                texts,
+                batch_size=batch_size,
+                show_progress=show_progress
+            )
         
-        # Count vowel groups
-        for char in word:
-            is_vowel = char in vowels
-            if is_vowel and not prev_is_vowel:
-                count += 1
-            prev_is_vowel = is_vowel
+        # Combine results
+        results = {}
+        for text in texts:
+            result = {
+                'embedding': embeddings[text],
+                'length': len(text.split())
+            }
+            
+            if return_emotions:
+                result['emotions'] = emotion_vectors[text]
+            
+            results[text] = result
         
-        # Ensure at least one syllable
-        return max(1, count)
+        return results
 
     def embed_phrase(self, text: str) -> PhraseEmbedding:
         """
@@ -313,23 +484,49 @@ class PhraseEmbedder:
         
         # Get transformer embedding
         with torch.no_grad():
-            embedding = self.embed_batch([text])[0]
+            embedding = self.get_embedding(text)
         
         # Analyze emotional content
-        emotion_scores = self.analyze_emotions(doc)
+        emotion_scores, emotional_valence = self.analyze_emotions(doc)
         
         # Analyze structural properties
         structure = self.analyze_structure(doc)
         
+        # Calculate tree depth
+        max_depth = 0
+        for token in doc:
+            depth = len(list(token.ancestors))
+            max_depth = max(max_depth, depth)
+        
+        # Calculate syntactic properties
+        syntax_tree = [(token.dep_, token.head.i) for token in doc]
+        
+        # Analyze clause structure
+        clauses = []
+        for sent in doc.sents:
+            for token in sent:
+                if token.pos_ == "VERB" and token.dep_ in ["ROOT", "ccomp", "xcomp"]:
+                    clause = {
+                        "verb": token.text,
+                        "subject": [child.text for child in token.children if child.dep_ == "nsubj"],
+                        "object": [child.text for child in token.children if child.dep_ in ["dobj", "pobj"]]
+                    }
+                    clauses.append(clause)
         # Combine all parameters
         shape_params = {
             'emotions': emotion_scores,
+            'emotional_valence': emotional_valence,
             'structure': structure,
+            'tree_depth': max_depth,
+            'syntax_complexity': len(syntax_tree) / max(len(doc), 1),
+            'clause_structure': clauses,
+            'clause_count': len(clauses),
             'length': len(doc),
+            'syllable_pattern': [self._count_syllables(token.text) for token in doc],
             'complexity': {
                 'sentence_length': len(doc),
                 'unique_words': len(set(token.lower_ for token in doc)),
-                'avg_word_length': np.mean([len(token.text) for token in doc if token.is_alpha]) if doc else 0
+                'avg_word_length': float(np.mean([len(token.text) for token in doc if token.is_alpha]) if doc else 0)
             }
         }
         
@@ -345,17 +542,43 @@ class PhraseEmbedder:
         # Process in batches
         for i in range(0, len(texts), self.batch_size):
             batch = texts[i:i + self.batch_size]
-            batch_embeddings = self.embed_batch(batch)
+            batch_embeddings = self.get_embeddings_batch(batch)
             
             # Process each text in the batch
             for text, embedding in zip(batch, batch_embeddings):
                 doc = self.nlp(text)
-                emotion_scores = self.analyze_emotions(doc)
+                emotion_scores, emotional_valence = self.analyze_emotions(doc)
                 structure = self.analyze_structure(doc)
+                
+                # Calculate tree depth
+                max_depth = 0
+                for token in doc:
+                    depth = len(list(token.ancestors))
+                    max_depth = max(max_depth, depth)
+                
+                # Calculate syntactic properties
+                syntax_tree = [(token.dep_, token.head.i) for token in doc]
+                
+                # Analyze clause structure
+                clauses = []
+                for sent in doc.sents:
+                    for token in sent:
+                        if token.pos_ == "VERB" and token.dep_ in ["ROOT", "ccomp", "xcomp"]:
+                            clause = {
+                                "verb": token.text,
+                                "subject": [child.text for child in token.children if child.dep_ == "nsubj"],
+                                "object": [child.text for child in token.children if child.dep_ in ["dobj", "pobj"]]
+                            }
+                            clauses.append(clause)
                 
                 shape_params = {
                     'emotions': emotion_scores,
+                    'emotional_valence': emotional_valence,
                     'structure': structure,
+                    'tree_depth': max_depth,
+                    'syntax_complexity': len(syntax_tree) / len(doc),
+                    'clause_structure': clauses,
+                    'clause_count': len(clauses),
                     'length': len(doc),
                     'complexity': {
                         'sentence_length': len(doc),
@@ -389,4 +612,57 @@ class PhraseEmbedder:
             chunk_text = ' '.join(sent.text for sent in chunk)
             chunks.append(self.embed_phrase(chunk_text))
         
-        return chunks 
+        return chunks
+
+    def analyze_emotions(self, doc) -> Tuple[Dict[str, float], float]:
+        """Analyze emotional content of text."""
+        emotion_scores = {}
+        for token in doc:
+            if token.has_vector:
+                vector = token.vector
+                for emotion, anchor in EMOTION_ANCHORS.items():
+                    similarity = np.dot(vector, anchor)
+                    emotion_scores[emotion] = emotion_scores.get(emotion, 0) + max(0, similarity)
+        
+        # Normalize scores
+        total = sum(emotion_scores.values()) or 1
+        emotion_scores = {k: v/total for k, v in emotion_scores.items()}
+        
+        # Calculate overall emotional valence
+        emotional_valence = sum(score * (1 if emotion in ['joy', 'trust'] else -1) 
+                              for emotion, score in emotion_scores.items())
+        
+        return emotion_scores, emotional_valence
+
+    def analyze_structure(self, doc) -> Dict[str, Any]:
+        """Analyze structural properties of text."""
+        return {
+            'sentence_count': len(list(doc.sents)),
+            'word_count': len([token for token in doc if token.is_alpha]),
+            'dependency_tree': [(token.text, token.dep_, token.head.text) for token in doc],
+            'pos_tags': Counter(token.pos_ for token in doc),
+            'root_verbs': [token.text for token in doc if token.dep_ == 'ROOT' and token.pos_ == 'VERB']
+        }
+
+    def _count_syllables(self, word: str) -> int:
+        """Estimate syllable count for a word."""
+        word = word.lower()
+        count = 0
+        vowels = 'aeiouy'
+        prev_is_vowel = False
+        
+        for char in word:
+            is_vowel = char in vowels
+            if is_vowel and not prev_is_vowel:
+                count += 1
+            prev_is_vowel = is_vowel
+            
+        # Handle common cases
+        if word.endswith('e'):
+            count -= 1
+        if word.endswith('le') and len(word) > 2 and word[-3] not in vowels:
+            count += 1
+        if count == 0:
+            count = 1
+            
+        return count 

@@ -30,7 +30,7 @@ def cli():
 @click.option('--interactive/--no-interactive', default=True, help='Enable/disable interactive mode')
 @click.option('--output-dir', default='visualizations', help='Output directory for visualizations')
 @click.option('--dimensions', default=3, help='Number of dimensions for visualization')
-@click.option('--model', default='en_core_web_sm', help='Spacy model to use for embeddings')
+@click.option('--model', default='glove-wiki-gigaword-300', help='model to use for embeddings')
 def visualize(interactive, output_dir, dimensions, model):
     """Create visualizations of the word manifold."""
     try:

@@ -552,34 +552,50 @@ class RuleSequence:
             start_generation: Starting generation number
         """
         current_generation = start_generation
-        manifold.transform(self.rules, current_generation) 
-        for rule in self.rules:
+        
+        for rule_name, rule in self.rules.items():
             # Check dependencies
-            if not self._check_dependencies(rule, manifold):
-                logger.warning(f"Skipping rule {rule.name} due to unmet dependencies")
+            if not self._check_dependencies(rule_name, manifold):
+                logger.warning(f"Skipping rule {rule_name} due to unmet dependencies")
                 continue
-                
-            # Infer and apply platonic ideals if needed
-            # if rule.requires_ideals:
-            #     self._infer_and_apply_ideals(manifold)
-                
+            
             # Apply the rule
-            logger.info(f"Applying rule {rule.name} at generation {current_generation}")
-            logger.info(f"Manifold state: {manifold.get_state_snapshot()}")
-            logger.info(f"Rule parameters: {rule.parameters}")
-            
-            # manifold.transform(rules, current_generation)
-            self.applied_rules.append(rule.name)
-            
-            # Record transformation
-            self.transformation_history.append({
-                'generation': current_generation,
-                'rule': rule.name,
-                'state': manifold.get_state_snapshot()
-            })
+            logger.info(f"Applying rule {rule_name} at generation {current_generation}")
+            try:
+                rule.apply(manifold, current_generation)
+                self.applied_rules.append(rule_name)
+                
+                # Record transformation
+                self.transformation_history.append({
+                    'generation': current_generation,
+                    'rule': rule_name,
+                    'state': manifold.get_state_snapshot()
+                })
+            except Exception as e:
+                logger.error(f"Error applying rule {rule_name}: {str(e)}")
+                continue
             
             current_generation += 1
+    
+    def _check_dependencies(self, rule_name: str, manifold: VectorManifold) -> bool:
+        """
+        Check if rule dependencies are satisfied.
+        
+        Args:
+            rule_name: Name of the rule to check
+            manifold: The current manifold state
             
+        Returns:
+            bool: True if dependencies are met, False otherwise
+        """
+        if rule_name not in self.dependencies:
+            return True
+            
+        return all(
+            dep_rule in self.applied_rules 
+            for dep_rule in self.dependencies[rule_name]
+        )
+
     def _apply_conditional(self, manifold: VectorManifold, start_generation: int) -> None:
         """
         Apply rules based on conditions and dependencies.
@@ -671,7 +687,7 @@ class RuleSequence:
             bool: True if conditions are met, False otherwise
         """
         # Check dependencies
-        if not self._check_dependencies(rule, manifold):
+        if not self._check_dependencies(rule.name, manifold):
             return False
             
         # Check rule-specific conditions
@@ -757,25 +773,6 @@ class RuleSequence:
         # Apply ideals to influence transformation
         for ideal in ideals:
             manifold.add_attractor(ideal)
-            
-    def _check_dependencies(self, rule: CellularRule, manifold: VectorManifold) -> bool:
-        """
-        Check if rule dependencies are satisfied.
-        
-        Args:
-            rule: The rule to check
-            manifold: The current manifold state
-            
-        Returns:
-            bool: True if dependencies are met, False otherwise
-        """
-        if not hasattr(rule, 'dependencies'):
-            return True
-            
-        return all(
-            dep_rule.name in self.applied_rules 
-            for dep_rule in rule.dependencies
-        )
 
 
 def create_predefined_sequences() -> Dict[str, RuleSequence]:

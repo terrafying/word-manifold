@@ -15,7 +15,13 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import cosine_distances, euclidean_distances
 import umap
-from scipy.spatial import Voronoi, ConvexHull
+try:
+    from scipy.spatial import Voronoi, ConvexHull, voronoi_plot_2d
+except ImportError:
+    from scipy import spatial
+    Voronoi = spatial.Voronoi
+    ConvexHull = spatial.ConvexHull
+    voronoi_plot_2d = spatial.voronoi_plot_2d
 import matplotlib.pyplot as plt
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
@@ -585,7 +591,18 @@ class VectorManifold:
         sephiroth_terms = {"kether", "chokmah", "binah", "chesed", "geburah",
                          "tiphareth", "netzach", "hod", "yesod", "malkuth"}
         
-        for cell in self.cells.values():
+        # Map terms to their numerological values
+        numerological_values = {
+            "earth": 4, "air": 1, "fire": 3, "water": 2,  # Elements
+            "mercury": 8, "venus": 7, "mars": 5, "jupiter": 4, "saturn": 3, "sun": 1, "moon": 2,  # Planets
+            "magician": 1, "priestess": 2, "empress": 3, "emperor": 4,  # Major arcana
+            "hierophant": 5, "lovers": 6, "chariot": 7, "strength": 8,
+            "hermit": 9, "wheel": 10, "justice": 11, "hanged": 12,
+            "death": 13, "temperance": 14, "devil": 15, "tower": 16,
+            "star": 17, "eighteen": 18, "nineteen": 19, "judgement": 20, "world": 21, "space": 0
+        }
+        
+        for cell_id, cell in self.cells.items():
             # Check what type of terms are most common in this cell
             cell_term_set = set(t.lower() for t in cell.terms)
             
@@ -606,26 +623,32 @@ class VectorManifold:
             
             max_count, cell_type = max(counts, key=lambda x: x[0])
             
-            # If no specific type has matches, keep as OTHER
-            if max_count > 0:
-                cell.type = cell_type
+            # If no clear type is found, use OTHER
+            if max_count == 0:
+                cell_type = CellType.OTHER
             
-            # Calculate numerological value based on terms in the cell
-            # We use the average of the first 5 terms (or all if less than 5)
-            terms_to_use = list(cell.terms)[:min(5, len(cell.terms))]
-            num_values = [self.embeddings.find_numerological_significance(term) 
-                         for term in terms_to_use]
+            # Calculate numerological value based on contained terms
+            term_values = []
+            for term in cell_term_set:
+                if term in numerological_values:
+                    term_values.append(numerological_values[term])
             
-            cell.numerological_value = int(np.mean(num_values))
+            # Use average of term values or cell_id + 1 as fallback
+            if term_values:
+                num_value = int(np.mean(term_values))
+            else:
+                num_value = (cell_id + 1) % 22  # Keep within 0-21 range
             
-            # For terms with master numbers, give them more weight
-            master_numbers = [11, 22, 33]
-            for term in terms_to_use:
-                value = self.embeddings.find_numerological_significance(term)
-                if value in master_numbers:
-                    # Increase the cell's numerological value to this master number
-                    cell.numerological_value = value
-                    break
+            # Update cell properties
+            self.cells[cell_id] = Cell(
+                id=cell_id,
+                terms=cell.terms,
+                centroid=cell.centroid,
+                type=cell_type,
+                numerological_value=num_value,
+                boundary_points=cell.boundary_points,
+                is_phrase=cell.is_phrase
+            )
 
     def get_term_cell(self, term: str) -> Optional[Cell]:
         """
@@ -1420,7 +1443,7 @@ class VectorManifold:
         ax.set_facecolor('black')
         
         # Plot cells
-        for cell in self.cells:
+        for cell in self.cells.values():
             # Get visualization properties
             vis_props = self._create_cell_visualization(cell)
             
