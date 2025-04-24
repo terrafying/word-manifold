@@ -15,17 +15,15 @@ from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import cosine_distances, euclidean_distances
 import umap
-try:
-    from scipy.spatial import Voronoi, ConvexHull, voronoi_plot_2d
-except ImportError:
-    from scipy import spatial
-    Voronoi = spatial.Voronoi
-    ConvexHull = spatial.ConvexHull
-    voronoi_plot_2d = spatial.voronoi_plot_2d
+from scipy.spatial import Voronoi, ConvexHull, voronoi_plot_2d
 import matplotlib.pyplot as plt
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path
 import colorsys
+import gc
+import torch
+from hdbscan import HDBSCAN
+import time
 
 from ..embeddings.word_embeddings import WordEmbeddings
 from ..embeddings.phrase_embeddings import PhraseEmbedding
@@ -70,7 +68,9 @@ class VectorManifold:
         embeddings: Union[WordEmbeddings, PhraseEmbedding],
         n_cells: int = 22,  # Default to 22 cells (major arcana)
         random_state: int = 93,  # Occult significance
-        reduction_dims: int = 3
+        reduction_dims: int = 3,
+        use_fractals: bool = True,
+        fractal_depth: int = 3
     ):
         """
         Initialize the VectorManifold.
@@ -80,22 +80,38 @@ class VectorManifold:
             n_cells: Number of cells to divide the manifold into
             random_state: Random seed for reproducibility
             reduction_dims: Dimensions for the reduced representation
+            use_fractals: Whether to use fractal geometry for cell division
+            fractal_depth: Depth for fractal cell division
         """
         self.embeddings = embeddings
         self.n_cells = n_cells
         self.random_state = random_state
         self.reduction_dims = reduction_dims
+        self.use_fractals = use_fractals
+        self.fractal_depth = fractal_depth
         
-        # Check if embeddings are loaded
-        if not self.embeddings.get_terms():
+        # Wait for terms to be loaded in background process
+        terms = self.embeddings.get_terms()
+        if not terms:
+            time.sleep(2)  # Give background process time to load terms
+            terms = self.embeddings.get_terms()
+            
+        if not terms:
             raise ValueError("Embeddings must have terms loaded. Call embeddings.load_terms() first.")
         
         # Create matrices for vector operations
-        self.terms = list(self.embeddings.get_terms())
+        self.terms = list(terms)
         self.term_to_index = {term: i for i, term in enumerate(self.terms)}
         
         # Vector representation of all terms
-        self.vectors = np.array([self.embeddings.get_embedding(term) for term in self.terms])
+        self.vectors = np.array([
+            embedding for embedding in [
+                self.embeddings.get_embedding(term) for term in self.terms
+            ] if embedding is not None
+        ])
+        
+        if len(self.vectors) == 0:
+            raise ValueError("No valid embeddings found for terms")
         
         # Initialize empty manifold structures
         self.cells: Dict[int, Cell] = {}
@@ -109,13 +125,37 @@ class VectorManifold:
         self._define_manifold()
         
     def _define_manifold(self) -> None:
-        """
-        Define the manifold structure by clustering terms and establishing relationships.
-        """
-        logger.info("Defining manifold structure")
+        """Define the manifold structure with fractal properties."""
+        logger.info("Defining manifold structure with fractal geometry")
         
-        # 1. Cluster terms to create cells
+        # Initial clustering
         self._cluster_terms()
+        
+        # Apply fractal division to cells if enabled
+        if self.use_fractals:
+            new_cells = []
+            for cell in self.cells.values():
+                subcells = self._fractal_cell_division(cell, self.fractal_depth)
+                new_cells.extend(subcells)
+            
+            # Update cell collection
+            self.cells = {cell.id: cell for cell in new_cells}
+        
+        # Generate fractal boundaries
+        for cell in self.cells.values():
+            cell.boundary_points = self._generate_fractal_boundary(cell)
+        
+        # Calculate fractal dimensions
+        self.fractal_dimensions = {
+            cell.id: self._calculate_fractal_dimension(cell)
+            for cell in self.cells.values()
+        }
+        
+        # Generate fractal flow fields
+        self.flow_fields = {
+            cell.id: self._generate_fractal_flow(cell)
+            for cell in self.cells.values()
+        }
         
         # 2. Reduce dimensions for visualization and operations
         self._reduce_dimensions()
@@ -175,39 +215,40 @@ class VectorManifold:
             for term in cluster_terms:
                 self.term_to_cell[term] = i
                 
-    def _reduce_dimensions(self) -> None:
-        """
-        Reduce the dimensionality of the vector space for visualization and operations.
-        """
-        logger.info(f"Reducing manifold to {self.reduction_dims} dimensions")
-        
-        # We use UMAP for dimension reduction as it better preserves global structure
+    def _reduce_dimensions(self):
+        """Reduce dimensionality of cell centroids using UMAP."""
+        if not hasattr(self, 'cell_centroids') or len(self.cell_centroids) == 0:
+            logger.warning("No cell centroids to reduce dimensions for")
+            self.reduced_centroids = np.array([])
+            return
+
+        # Ensure centroids are 2D array
+        cell_centroids = np.array(self.cell_centroids)
+        if cell_centroids.ndim == 1:
+            cell_centroids = cell_centroids.reshape(-1, 1)
+        elif cell_centroids.size == 0:
+            self.reduced_centroids = np.array([])
+            return
+
+        # Configure and fit UMAP
         reducer = umap.UMAP(
-            n_components=self.reduction_dims, 
-            random_state=self.random_state,
-            n_neighbors=12,
-            min_dist=0.01
+            n_neighbors=min(self.n_neighbors, len(cell_centroids)),
+            min_dist=self.min_dist,
+            n_components=self.n_components,
+            metric=self.metric
         )
         
-        # Reduce the term vectors
-        reduced_vectors = reducer.fit_transform(self.vectors)
-        
-        # Also reduce cell centroids
-        cell_centroids = np.array([cell.centroid for cell in self.cells.values()])
-        reduced_centroids = reducer.transform(cell_centroids)
-        
-        # Create labels list matching the reduced points
-        labels = [self.term_to_cell[term] for term in self.terms]
-        
-        # Store the reduced state
-        self.reduced = ManifoldReducedState(
-            points=reduced_vectors,
-            labels=labels,
-            cell_centroids=reduced_centroids,
-            boundaries=[]  # Will be filled in _define_cell_boundaries
-        )
-        
-        logger.info(f"Reduced manifold to {self.reduction_dims} dimensions")
+        try:
+            # Fit and transform if we have enough samples
+            if len(cell_centroids) >= 2:
+                self.reduced_centroids = reducer.fit_transform(cell_centroids)
+            else:
+                # For single sample, just copy the input
+                self.reduced_centroids = cell_centroids.copy()
+                logger.warning("Only one centroid available, skipping UMAP reduction")
+        except Exception as e:
+            logger.error(f"Error in dimension reduction: {e}")
+            self.reduced_centroids = cell_centroids.copy()
         
     def _define_cell_boundaries(self) -> None:
         """Define boundaries between cells in the reduced space."""
@@ -1504,5 +1545,391 @@ class VectorManifold:
         ax.set_aspect('equal')
         ax.set_xticks([])
         ax.set_yticks([])
+        
+        return ax
+
+    def _fractal_cell_division(self, cell: Cell, depth: int = 2) -> List[Cell]:
+        """
+        Recursively divide a cell into subcells using fractal patterns.
+        Memory optimized version with proper shape handling.
+        
+        Args:
+            cell: Cell to divide
+            depth: Recursion depth
+            
+        Returns:
+            List of subcells
+        """
+        if depth <= 0:
+            return []
+            
+        subcells = []
+        terms_list = list(cell.terms)
+        
+        # Get term vectors efficiently
+        term_vectors = np.array([self.embeddings.get_embedding(term) for term in terms_list])
+        
+        # Define transformations with proper shapes
+        transforms = []
+        n_divisions = 5  # Number of subcells to create
+        
+        for i in range(n_divisions):
+            angle = 360.0 / n_divisions * i
+            scale = 0.5  # Scale factor for self-similarity
+            
+            # Create transformation with proper broadcasting
+            transforms.append({
+                'rotate': angle,
+                'scale': scale,
+                'translate': cell.centroid * (1 - scale)  # Ensure translation matches embedding dimensions
+            })
+        
+        # Apply transformations with memory management
+        for transform in transforms:
+            # Get original vectors relative to centroid
+            transformed = term_vectors - cell.centroid
+            
+            # Apply scaling
+            transformed = transformed * transform['scale']
+            
+            # For high-dimensional embeddings, we'll rotate in the first two principal components
+            if transform['rotate'] != 0:
+                # Project to 2D for rotation
+                pca = PCA(n_components=2)
+                projected = pca.fit_transform(transformed)
+                
+                # Create proper 2D rotation matrix
+                theta = np.radians(transform['rotate'])
+                rotation = np.array([[np.cos(theta), -np.sin(theta)],
+                                   [np.sin(theta), np.cos(theta)]])
+                
+                # Apply rotation in 2D space
+                rotated_2d = np.dot(projected, rotation.T)  # Use np.dot for explicit matrix multiplication
+                
+                # Project back to original space
+                transformed = pca.inverse_transform(rotated_2d)
+            
+            # Apply translation with proper broadcasting
+            transformed = transformed + transform['translate'].reshape(1, -1)
+            
+            # Find terms closest to transformed points efficiently
+            distances = euclidean_distances(transformed, term_vectors)
+            assignments = np.argmin(distances, axis=1)
+            
+            # Create subcell with memory management
+            subcell_terms = set([terms_list[i] for i in assignments])
+            if subcell_terms:
+                subcell = Cell(
+                    id=len(self.cells) + len(subcells),
+                    terms=subcell_terms,
+                    centroid=np.mean(transformed, axis=0),
+                    type=cell.type,
+                    numerological_value=cell.numerological_value
+                )
+                
+                # Clear temporary arrays
+                del distances
+                gc.collect()
+                
+                # Recursive division with memory management
+                new_subcells = self._fractal_cell_division(subcell, depth - 1)
+                subcells.extend(new_subcells)
+            
+            # Clear transformation arrays
+            del transformed
+            gc.collect()
+        
+        return subcells
+
+    def _generate_fractal_boundary(self, cell: Cell, iterations: int = 3) -> np.ndarray:
+        """
+        Generate fractal boundary for a cell using Koch-like curves with memory optimization.
+        
+        Args:
+            cell: Cell to generate boundary for
+            iterations: Number of fractal iterations (reduced from 4 to 3 for memory)
+            
+        Returns:
+            Array of boundary points forming a fractal curve
+        """
+        if cell.boundary_points is None:
+            return np.array([])
+        
+        def koch_iteration(points):
+            # Pre-allocate arrays for better memory efficiency
+            n_points = len(points) - 1
+            new_points = np.zeros((n_points * 4 + 1, 2))
+            
+            for i in range(n_points):
+                p1, p2 = points[i], points[i + 1]
+                
+                # Calculate intermediate points efficiently
+                v = p2 - p1
+                third = v / 3
+                
+                # Compute points in a vectorized way
+                idx = i * 4
+                new_points[idx] = p1
+                new_points[idx + 1] = p1 + third
+                new_points[idx + 2] = p1 + third * 1.5 + np.array([-third[1], third[0]]) * 0.866
+                new_points[idx + 3] = p1 + third * 2
+            
+            new_points[-1] = points[-1]
+            return new_points
+        
+        boundary = cell.boundary_points.copy()
+        for _ in range(iterations):
+            boundary = koch_iteration(boundary)
+            
+            # Clear memory after each iteration
+            gc.collect()
+            
+        return boundary
+
+    def _calculate_fractal_dimension(self, cell: Cell, scales: np.ndarray = None) -> float:
+        """
+        Calculate the fractal dimension of a cell's semantic structure with memory optimization.
+        
+        Args:
+            cell: Cell to analyze
+            scales: Array of scales to use for box counting
+            
+        Returns:
+            Estimated fractal dimension
+        """
+        if scales is None:
+            scales = np.logspace(-2, 0, 10)  # Reduced number of scales for memory efficiency
+        
+        # Get term embeddings in batches
+        batch_size = 32
+        term_vectors = []
+        terms_list = list(cell.terms)
+        
+        for i in range(0, len(terms_list), batch_size):
+            batch = terms_list[i:i + batch_size]
+            batch_vectors = [self.embeddings.get_embedding(term) for term in batch]
+            term_vectors.extend(batch_vectors)
+            gc.collect()
+        
+        term_vectors = np.array(term_vectors)
+        
+        # Box counting at different scales with memory optimization
+        counts = []
+        for scale in scales:
+            # Create grid at current scale
+            grid = np.ceil(term_vectors / scale)
+            # Count unique boxes
+            unique_boxes = len(np.unique(grid, axis=0))
+            counts.append(unique_boxes)
+            
+            # Clear temporary arrays
+            del grid
+            gc.collect()
+        
+        # Calculate fractal dimension from log-log slope
+        coeffs = np.polyfit(np.log(scales), np.log(counts), 1)
+        fractal_dim = -coeffs[0]
+        
+        return fractal_dim
+
+    def _generate_fractal_flow(self, cell: Cell, depth: int = 2) -> np.ndarray:
+        """
+        Generate fractal flow field within a cell using semantic relationships.
+        Memory optimized version with reduced complexity.
+        
+        Args:
+            cell: Cell to generate flow field for
+            depth: Recursion depth for fractal pattern (reduced from 3 to 2)
+            
+        Returns:
+            Array of flow vectors
+        """
+        def julia_flow(z):
+            # Simplified Julia set calculation
+            c = -0.4 + 0.6j
+            w = z * z + c
+            return np.array([w.real, w.imag])
+        
+        # Generate grid points within cell with reduced resolution
+        if cell.boundary_points is not None:
+            x_min, y_min = np.min(cell.boundary_points, axis=0)
+            x_max, y_max = np.max(cell.boundary_points, axis=0)
+        else:
+            radius = 1.0
+            x_min, y_min = cell.centroid - radius
+            x_max, y_max = cell.centroid + radius
+        
+        grid_size = 30  # Reduced from 50 for memory efficiency
+        x = np.linspace(x_min, x_max, grid_size)
+        y = np.linspace(y_min, y_max, grid_size)
+        X, Y = np.meshgrid(x, y)
+        
+        # Calculate flow vectors using fractal pattern
+        flow_vectors = np.zeros((grid_size, grid_size, 2))
+        
+        # Process in smaller chunks for memory efficiency
+        chunk_size = 10
+        for i in range(0, grid_size, chunk_size):
+            for j in range(0, grid_size, chunk_size):
+                i_end = min(i + chunk_size, grid_size)
+                j_end = min(j + chunk_size, grid_size)
+                
+                chunk_X = X[i:i_end, j:j_end]
+                chunk_Y = Y[i:i_end, j:j_end]
+                
+                z = chunk_X + chunk_Y*1j
+                flow = julia_flow(z)
+                
+                # Normalize flow vectors
+                flow_norm = np.sqrt(flow[...,0]**2 + flow[...,1]**2)
+                flow_norm = np.maximum(flow_norm, 1e-10)  # Avoid division by zero
+                flow_vectors[i:i_end, j:j_end, 0] = flow[...,0] / flow_norm
+                flow_vectors[i:i_end, j:j_end, 1] = flow[...,1] / flow_norm
+                
+                # Clear temporary arrays
+                del chunk_X, chunk_Y, z, flow, flow_norm
+                gc.collect()
+        
+        return flow_vectors
+
+    def recursive_reduce(
+        self,
+        depth: int = 3,
+        min_cluster_size: int = 5,
+        coherence_threshold: float = 0.8,
+        scale_factor: float = 0.5,  # Controls self-similarity scale
+        rotation_symmetry: int = 5   # Number of rotational symmetries
+    ) -> Dict[str, Any]:
+        """
+        Apply recursive dimensionality reduction with fractal patterns.
+        
+        Args:
+            depth: Maximum recursion depth
+            min_cluster_size: Minimum points per cluster
+            coherence_threshold: Minimum coherence to continue recursion
+            scale_factor: Controls self-similarity scale
+            rotation_symmetry: Number of rotational symmetries
+        
+        Returns:
+            Dictionary containing reduction results
+        """
+        from .reduction import RecursiveReducer
+        
+        # Create reducer instance
+        reducer = RecursiveReducer(
+            manifold=self,
+            depth=depth,
+            min_cluster_size=min_cluster_size,
+            coherence_threshold=coherence_threshold,
+            scale_factor=scale_factor,
+            rotation_symmetry=rotation_symmetry
+        )
+        
+        # Apply reduction
+        result = reducer.reduce()
+        
+        # Store the hierarchical reduction
+        self.recursive_reduced = result
+        
+        # Update the main reduction with the top level
+        self.reduced = ManifoldReducedState(
+            points=result['points'],
+            labels=[self.term_to_cell[term] for term in self.terms],
+            cell_centroids=result['points'],
+            boundaries=[]
+        )
+        
+        return result
+
+    def visualize_recursive_reduction(
+        self,
+        level: int = 0,
+        ax: Optional[plt.Axes] = None,
+        parent_points: Optional[np.ndarray] = None,
+        show_connections: bool = True
+    ) -> plt.Axes:
+        """
+        Visualize the recursive reduction results, showing fractal patterns.
+        
+        Args:
+            level: Which level of the reduction to visualize (0 = top level)
+            ax: Optional matplotlib axes to plot on
+            parent_points: Points from the parent level for drawing connections
+            show_connections: Whether to show connections between levels
+            
+        Returns:
+            The matplotlib axes object
+        """
+        if not hasattr(self, 'recursive_reduced'):
+            raise ValueError("Must run recursive_reduce() first")
+            
+        if ax is None:
+            fig = plt.figure(figsize=(12, 8))
+            if self.reduction_dims == 3:
+                ax = fig.add_subplot(111, projection='3d')
+            else:
+                ax = fig.add_subplot(111)
+                
+        def plot_level(result: Dict[str, Any], depth: int = 0, parent: Optional[np.ndarray] = None):
+            points = result['points']
+            
+            # Plot points with size decreasing by depth
+            size = 100 * (0.7 ** depth)
+            alpha = 0.7 * (0.8 ** depth)
+            
+            if self.reduction_dims == 3:
+                scatter = ax.scatter(
+                    points[:, 0], points[:, 1], points[:, 2],
+                    s=size, alpha=alpha, c=np.random.rand(3),
+                    label=f'Level {depth}'
+                )
+                
+                if show_connections and parent is not None:
+                    # Draw connections to parent level
+                    for i, point in enumerate(points):
+                        ax.plot(
+                            [parent[i, 0], point[0]],
+                            [parent[i, 1], point[1]],
+                            [parent[i, 2], point[2]],
+                            'k-', alpha=0.1
+                        )
+            else:
+                scatter = ax.scatter(
+                    points[:, 0], points[:, 1],
+                    s=size, alpha=alpha, c=np.random.rand(3),
+                    label=f'Level {depth}'
+                )
+                
+                if show_connections and parent is not None:
+                    # Draw connections to parent level
+                    for i, point in enumerate(points):
+                        ax.plot(
+                            [parent[i, 0], point[0]],
+                            [parent[i, 1], point[1]],
+                            'k-', alpha=0.1
+                        )
+            
+            # Recursively plot children
+            for child in result['children']:
+                plot_level(child, depth + 1, points)
+                
+        # Start plotting from the requested level
+        def find_level(result: Dict[str, Any], target: int, current: int = 0) -> Optional[Dict[str, Any]]:
+            if current == target:
+                return result
+            for child in result['children']:
+                found = find_level(child, target, current + 1)
+                if found is not None:
+                    return found
+            return None
+            
+        level_data = find_level(self.recursive_reduced, level)
+        if level_data is None:
+            raise ValueError(f"Level {level} not found in reduction results")
+            
+        plot_level(level_data, depth=level, parent=parent_points)
+        
+        ax.set_title(f'Recursive Reduction Visualization (Level {level}+)')
+        ax.legend()
         
         return ax

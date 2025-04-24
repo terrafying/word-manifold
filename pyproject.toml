@@ -36,14 +36,20 @@ dependencies = [
     "huggingface-hub>=0.30.2",
     "dash>=3.0.3",
     "librosa>=0.11.0",
-    "sentence-transformers>=2.5.1"
+    "sentence-transformers>=2.5.1",
+    "hypertools @ git+https://github.com/terrafying/hypertools.git",
+    "hf_xet>=1.0.3",
+    "flask>=3.0.3",
+    "flask-cors>=4.0.0"
 ]
 
 [project.scripts]
 word-manifold = "word_manifold.visualization.cli:cli"
 word-manifold-visualize = "word_manifold.visualization.cli:visualize"
-word-manifold-animate = "word_manifold.visualization.cli:animate_ritual"
-word-manifold-serve = "word_manifold.visualization.cli:serve"
+word-manifold-symbolic = "word_manifold.visualization.cli:symbolic"
+word-manifold-tree = "word_manifold.visualization.cli:semantic_tree"
+word-manifold-shapes = "word_manifold.visualization.cli:shapes"
+word-manifold-automata = "word_manifold.visualization.cli:automata"
 
 [project.optional-dependencies]
 dev = [

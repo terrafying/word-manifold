@@ -14,6 +14,9 @@ from typing import List, Set, Dict, Optional, Union, Tuple, Any
 from functools import lru_cache
 from transformers import AutoTokenizer, AutoModel
 from sentence_transformers import SentenceTransformer
+import gc
+from .term_manager import TermManager
+from .distributed_term_manager import DistributedTermManager
 
 # Set environment variable to handle tokenizer parallelism warning
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -23,126 +26,154 @@ logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Default models
-DEFAULT_MODEL = 'Alibaba-NLP/gte-Qwen2-7B-instruct'
-BACKUP_MODEL = 'Alibaba-NLP/gte-Qwen2-1.5B-instruct'
+# Default models - using smaller models by default
+DEFAULT_MODEL = 'sentence-transformers/all-MiniLM-L6-v2'  # Much smaller model
+BACKUP_MODEL = 'sentence-transformers/paraphrase-MiniLM-L3-v2'  # Even smaller backup
 
 class WordEmbeddings:
     """
-    A class for managing word embeddings and related operations.
-    
-    Uses state-of-the-art GTE models for high-quality embeddings with
-    support for long sequences and multilingual content.
+    Manages word embeddings with background processing support.
     """
     
     DEFAULT_MODEL = DEFAULT_MODEL
     BACKUP_MODEL = BACKUP_MODEL
     
-    def __init__(self, model_name: str = DEFAULT_MODEL, cache_size: int = 1000):
+    def __init__(
+        self,
+        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+        cache_size: int = 10000,
+        distributed: bool = False,
+        ray_address: Optional[str] = None,
+        num_workers: int = 2
+    ):
         """
-        Initialize the embeddings manager.
+        Initialize WordEmbeddings with background processing.
         
         Args:
             model_name: Name of the transformer model to use
-            cache_size: Size of the LRU cache for embeddings
+            cache_size: Maximum number of terms to cache
+            distributed: Whether to use distributed processing
+            ray_address: Optional Ray cluster address for distributed processing
+            num_workers: Number of workers for distributed processing
         """
         self.model_name = model_name
-        self.terms: Set[str] = set()  # Initialize empty set of terms
-        self.embeddings = {}  # Cache for embeddings
-        self._initialize_model()
         
-        # Setup caching
-        self._get_embedding = lru_cache(maxsize=cache_size)(self._get_embedding_uncached)
-    
-    def _initialize_model(self) -> None:
-        """Initialize the transformer model."""
-        try:
-            logger.info(f"Loading model: {self.model_name}")
-            self.model = SentenceTransformer(self.model_name)
-            self.tokenizer = self.model.tokenizer
-            self.embedding_dim = self.model.get_sentence_embedding_dimension()
-        except Exception as e:
-            logger.error(f"Error loading model {self.model_name}: {str(e)}")
-            logger.info(f"Falling back to {self.BACKUP_MODEL}")
-            self.model_name = self.BACKUP_MODEL
-            self.model = SentenceTransformer(self.BACKUP_MODEL)
-            self.tokenizer = self.model.tokenizer
-            self.embedding_dim = self.model.get_sentence_embedding_dimension()
-    
-    def load_terms(self, terms: Union[List[str], Set[str]]) -> None:
-        """
-        Load terms into the embeddings manager.
-        
-        Args:
-            terms: List or set of terms to load
-        """
-        if isinstance(terms, list):
-            terms = set(terms)
-        self.terms.update(terms)
-        logger.info(f"Loaded {len(terms)} terms")
-    
-    def get_terms(self) -> Set[str]:
-        """Get the set of loaded terms."""
-        return self.terms.copy()
-    
-    def _get_embedding_uncached(self, term: str) -> Optional[np.ndarray]:
-        """
-        Get embedding for a term without caching.
-        
-        Args:
-            term: Term to get embedding for
+        if distributed:
+            logger.info(f"Initializing distributed term manager with Ray{'@'+ray_address if ray_address else ''}")
+            self.term_manager = DistributedTermManager(
+                model_name=model_name,
+                cache_size=cache_size,
+                num_workers=num_workers,
+                ray_address=ray_address
+            )
+        else:
+            logger.info("Initializing local term manager")
+            self.term_manager = TermManager(
+                model_name=model_name,
+                cache_size=cache_size
+            )
             
-        Returns:
-            Embedding vector or None if term not found
+    def load_terms(self, terms: List[str]):
         """
-        if term not in self.terms:
-            logger.warning(f"Term '{term}' not found in loaded terms")
-            return None
+        Load terms into the embedding space.
         
-        try:
-            embedding = self.model.encode([term], convert_to_numpy=True)[0]
-            self.embeddings[term] = embedding
-            return embedding
-        except Exception as e:
-            logger.error(f"Error getting embedding for '{term}': {str(e)}")
-            return None
-    
-    def get_embedding(self, term: str) -> Optional[np.ndarray]:
+        Args:
+            terms: List of terms to load
+        """
+        # Add terms to background processor
+        self.term_manager.add_terms(terms)
+        
+        # Store terms locally
+        self.term_manager.add_term_set('loaded_terms', set(terms))
+        
+    def get_embedding(self, term: str, timeout: Optional[float] = None) -> Optional[np.ndarray]:
         """
         Get embedding for a term.
         
         Args:
             term: Term to get embedding for
+            timeout: Optional timeout for distributed processing
             
         Returns:
-            Embedding vector or None if term not found
+            Numpy array of embedding or None if not found
         """
-        return self._get_embedding(term)
+        return self.term_manager.get_embedding(term, timeout=timeout)
+        
+    def get_terms(self) -> Set[str]:
+        """
+        Get all loaded terms.
+        
+        Returns:
+            Set of loaded terms
+        """
+        return self.term_manager.get_term_set('loaded_terms')
+        
+    def __del__(self):
+        """Cleanup when object is deleted."""
+        if hasattr(self, 'term_manager'):
+            self.term_manager.shutdown()
+
+    def _initialize_model(self) -> None:
+        """Initialize the transformer model with memory optimization."""
+        try:
+            logger.info(f"Loading model: {self.DEFAULT_MODEL}")
+            self.model = SentenceTransformer(self.DEFAULT_MODEL)
+            self.tokenizer = self.model.tokenizer
+            self.embedding_dim = self.model.get_sentence_embedding_dimension()
+            
+            # Force garbage collection after model loading
+            gc.collect()
+            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            
+        except Exception as e:
+            logger.error(f"Error loading model {self.DEFAULT_MODEL}: {str(e)}")
+            logger.info(f"Falling back to {self.BACKUP_MODEL}")
+            self.model = SentenceTransformer(self.BACKUP_MODEL)
+            self.tokenizer = self.model.tokenizer
+            self.embedding_dim = self.model.get_sentence_embedding_dimension()
+            
+            gc.collect()
+            torch.cuda.empty_cache() if torch.cuda.is_available() else None
     
-    def get_embeddings(self, terms: List[str]) -> Dict[str, np.ndarray]:
+    def _check_memory_usage(self) -> bool:
+        """Check if memory usage is above threshold."""
+        if torch.cuda.is_available():
+            memory_allocated = torch.cuda.memory_allocated()
+            memory_reserved = torch.cuda.memory_reserved()
+            if memory_allocated / memory_reserved > 0.8:
+                return True
+        return False
+    
+    def _clear_caches(self) -> None:
+        """Clear various caches to free memory."""
+        self.embeddings.clear()
+        gc.collect()
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    
+    def get_embeddings(
+        self,
+        terms: List[str],
+        timeout: Optional[float] = None
+    ) -> Dict[str, np.ndarray]:
         """
         Get embeddings for multiple terms.
         
         Args:
             terms: List of terms to get embeddings for
+            timeout: Optional timeout for distributed processing
             
         Returns:
             Dictionary mapping terms to their embeddings
         """
-        valid_terms = [t for t in terms if t in self.terms]
-        if not valid_terms:
-            return {}
-            
-        try:
-            embeddings = self.model.encode(valid_terms, convert_to_numpy=True)
-            return {term: emb for term, emb in zip(valid_terms, embeddings)}
-        except Exception as e:
-            logger.error(f"Error getting batch embeddings: {str(e)}")
-            return {}
-    
-    def get_embeddings_batch(self, terms: List[str]) -> Dict[str, np.ndarray]:
-        """Alias for get_embeddings for backward compatibility."""
-        return self.get_embeddings(terms)
+        if isinstance(self.term_manager, DistributedTermManager):
+            return self.term_manager.get_embeddings_batch(terms, timeout=timeout or 60.0)
+        else:
+            results = {}
+            for term in terms:
+                embedding = self.get_embedding(term)
+                if embedding is not None:
+                    results[term] = embedding
+            return results
     
     def get_embedding_dim(self) -> int:
         """Get the dimensionality of the embeddings."""
