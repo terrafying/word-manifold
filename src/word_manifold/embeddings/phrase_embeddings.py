@@ -202,6 +202,7 @@ class PhraseEmbedder:
         try:
             logger.info(f"Loading embedding model: {self.model_name}")
             self.model = SentenceTransformer(self.model_name)
+            self.tokenizer = self.model.tokenizer  # Get tokenizer from the model
             self.model.to(self.device)
             
             # Clear GPU cache after model loading
@@ -214,6 +215,7 @@ class PhraseEmbedder:
             try:
                 self.model_name = BACKUP_MODEL
                 self.model = SentenceTransformer(BACKUP_MODEL)
+                self.tokenizer = self.model.tokenizer  # Get tokenizer from backup model
                 self.model.to(self.device)
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -381,31 +383,14 @@ class PhraseEmbedder:
         # Add instruction for query-style embedding
         query = f'Instruct: Represent this text for retrieval\nQuery: {text}'
         
-        # Tokenize and get embedding
-        inputs = self.tokenizer(
+        # Get embedding directly from the model
+        embedding = self.model.encode(
             query,
-            max_length=self.max_length,
-            padding=True,
-            truncation=True,
-            return_tensors='pt'
-        ).to(self.device)
+            convert_to_tensor=True,
+            normalize_embeddings=True
+        )
         
-        outputs = self.model(**inputs)
-        
-        # Use last token pooling
-        attention_mask = inputs['attention_mask']
-        last_hidden = outputs.last_hidden_state
-        
-        if attention_mask[:, -1].sum() == attention_mask.shape[0]:
-            pooled = last_hidden[:, -1]
-        else:
-            sequence_lengths = attention_mask.sum(dim=1) - 1
-            batch_size = last_hidden.shape[0]
-            pooled = last_hidden[torch.arange(batch_size, device=self.device), sequence_lengths]
-        
-        # Normalize embedding
-        embedding = torch.nn.functional.normalize(pooled, p=2, dim=1)
-        return embedding.cpu().numpy()[0]
+        return embedding.cpu().numpy()
     
     def _get_emotion_vector_uncached(self, text: str) -> np.ndarray:
         """Get emotion vector for text without caching.
