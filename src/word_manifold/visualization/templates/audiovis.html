@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Audio-Reactive ASCII Visualization</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            color: #fff;
+            font-family: monospace;
+            overflow: hidden;
+        }
+        
+        #container {
+            display: flex;
+            height: 100vh;
+        }
+        
+        #visualization {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 8px;
+            line-height: 1;
+            white-space: pre;
+            overflow: hidden;
+        }
+        
+        #controls {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 250px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-left: 1px solid #333;
+        }
+        
+        .control-group {
+            margin-bottom: 20px;
+        }
+        
+        .control-group h3 {
+            margin: 0 0 10px 0;
+            color: #888;
+        }
+        
+        select, input[type="range"] {
+            width: 100%;
+            margin: 5px 0;
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 5px;
+        }
+        
+        input[type="range"] {
+            -webkit-appearance: none;
+            height: 5px;
+            border-radius: 2px;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 15px;
+            height: 15px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        #metrics {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 250px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px;
+            display: flex;
+            justify-content: space-around;
+            border-top: 1px solid #333;
+        }
+        
+        .metric {
+            text-align: center;
+        }
+        
+        .metric-value {
+            font-size: 1.2em;
+            color: #0f0;
+        }
+        
+        #spectrum {
+            width: 100%;
+            height: 100px;
+            background: #111;
+            margin-top: 10px;
+            border: 1px solid #333;
+        }
+        
+        @keyframes glow {
+            0% { text-shadow: 0 0 5px #fff; }
+            50% { text-shadow: 0 0 20px #fff, 0 0 30px #0ff; }
+            100% { text-shadow: 0 0 5px #fff; }
+        }
+        
+        .glow-text {
+            animation: glow 2s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="visualization"></div>
+        
+        <div id="controls">
+            <div class="control-group">
+                <h3>Pattern Style</h3>
+                <select id="patternStyle">
+                    <option value="wave">Wave</option>
+                    <option value="mandala">Mandala</option>
+                    <option value="field">Field</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <h3>Color Mode</h3>
+                <select id="colorMode">
+                    <option value="spectrum">Spectrum</option>
+                    <option value="intensity">Intensity</option>
+                    <option value="frequency">Frequency</option>
+                </select>
+            </div>
+            
+            <div class="control-group">
+                <h3>Visualization Size</h3>
+                <label>Width: <span id="widthValue">80</span></label>
+                <input type="range" id="width" min="40" max="160" value="80">
+                <label>Height: <span id="heightValue">40</span></label>
+                <input type="range" id="height" min="20" max="80" value="40">
+            </div>
+            
+            <div class="control-group">
+                <h3>Font Size</h3>
+                <input type="range" id="fontSize" min="6" max="16" value="8">
+            </div>
+            
+            <div class="control-group">
+                <h3>Spectrum</h3>
+                <canvas id="spectrum"></canvas>
+            </div>
+        </div>
+        
+        <div id="metrics">
+            <div class="metric">
+                <div>Intensity</div>
+                <div id="intensityValue" class="metric-value">0.00</div>
+            </div>
+            <div class="metric">
+                <div>Frequency</div>
+                <div id="frequencyValue" class="metric-value">0 Hz</div>
+            </div>
+            <div class="metric">
+                <div>FPS</div>
+                <div id="fpsValue" class="metric-value">0</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // WebSocket connection
+        const ws = new WebSocket('ws://localhost:8765');
+        
+        // UI elements
+        const visualization = document.getElementById('visualization');
+        const spectrum = document.getElementById('spectrum').getContext('2d');
+        const intensityValue = document.getElementById('intensityValue');
+        const frequencyValue = document.getElementById('frequencyValue');
+        const fpsValue = document.getElementById('fpsValue');
+        
+        // Configuration
+        let config = {
+            width: 80,
+            height: 40,
+            pattern_style: 'wave',
+            color_mode: 'spectrum'
+        };
+        
+        // Performance monitoring
+        let lastFrameTime = performance.now();
+        let frameCount = 0;
+        
+        // WebSocket handlers
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            // Update visualization
+            visualization.textContent = data.pattern;
+            
+            // Update metrics
+            intensityValue.textContent = data.intensity.toFixed(2);
+            frequencyValue.textContent = `${Math.round(data.dominant_freq)} Hz`;
+            
+            // Update spectrum visualization
+            drawSpectrum(data.spectrum);
+            
+            // Update FPS
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFrameTime >= 1000) {
+                fpsValue.textContent = frameCount;
+                frameCount = 0;
+                lastFrameTime = now;
+            }
+        };
+        
+        ws.onopen = () => {
+            console.log('Connected to visualization server');
+            sendConfig();
+        };
+        
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+        
+        // UI event handlers
+        document.getElementById('patternStyle').onchange = (e) => {
+            config.pattern_style = e.target.value;
+            sendConfig();
+        };
+        
+        document.getElementById('colorMode').onchange = (e) => {
+            config.color_mode = e.target.value;
+            sendConfig();
+        };
+        
+        document.getElementById('width').oninput = (e) => {
+            config.width = parseInt(e.target.value);
+            document.getElementById('widthValue').textContent = config.width;
+            sendConfig();
+        };
+        
+        document.getElementById('height').oninput = (e) => {
+            config.height = parseInt(e.target.value);
+            document.getElementById('heightValue').textContent = config.height;
+            sendConfig();
+        };
+        
+        document.getElementById('fontSize').oninput = (e) => {
+            visualization.style.fontSize = `${e.target.value}px`;
+        };
+        
+        function sendConfig() {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ config }));
+            }
+        }
+        
+        function drawSpectrum(spectrum) {
+            const canvas = spectrum.canvas;
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear canvas
+            spectrum.fillStyle = '#111';
+            spectrum.fillRect(0, 0, width, height);
+            
+            // Draw spectrum
+            const barWidth = width / spectrum.length;
+            spectrum.fillStyle = '#0f0';
+            
+            for (let i = 0; i < spectrum.length; i++) {
+                const barHeight = spectrum[i] * height;
+                spectrum.fillRect(
+                    i * barWidth,
+                    height - barHeight,
+                    barWidth - 1,
+                    barHeight
+                );
+            }
+        }
+        
+        // Handle window resize
+        window.onresize = () => {
+            const canvas = document.getElementById('spectrum');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        };
+        
+        // Initial setup
+        window.onresize();
+    </script>
+</body>
+</html> 

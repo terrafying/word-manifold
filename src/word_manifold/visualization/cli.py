@@ -26,6 +26,7 @@ import yaml
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 import math
+import asyncio
 
 # Configure matplotlib for non-interactive backend
 import matplotlib
@@ -62,6 +63,7 @@ get_server = lazy_import('word_manifold.visualization.server')
 get_remote_server = lazy_import('word_manifold.visualization.remote_server')
 get_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')
 get_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')
+get_audiovis = lazy_import('word_manifold.visualization.audiovis_viewer')
 
 # Progress bar support (lightweight)
 try:
@@ -87,6 +89,7 @@ DEFAULT_TIMEOUTS = {
     'shutdown': 10,    # Graceful shutdown timeout
     'startup': 30,     # Server startup timeout
     'process': 5,      # Process operation timeout
+    'websocket': 60,   # WebSocket connection timeout
 }
 SERVER_URL = f'http://{DEFAULT_HOST}:{DEFAULT_PORT}'
 
@@ -1503,9 +1506,178 @@ def ascii(
         logger.error("Error generating visualization", exc_info=e)
         raise click.ClickException(str(e))
 
+@cli.command()
+@click.option('--host', default=DEFAULT_HOST, help='Server host')
+@click.option('--port', default=8765, help='Server port')
+@click.option('--width', default=80, help='Visualization width')
+@click.option('--height', default=40, help='Visualization height')
+@click.option('--fps', default=30, help='Target frames per second')
+@click.option('--pattern', type=click.Choice(['wave', 'mandala', 'field']), default='wave', help='Initial pattern style')
+@click.option('--color-mode', type=click.Choice(['spectrum', 'intensity', 'frequency']), default='spectrum', help='Initial color mode')
+@click.option('--sample-rate', default=44100, help='Audio sample rate')
+@click.option('--block-size', default=2048, help='Audio block size')
+@click.option('--device', type=int, help='Audio input device ID')
+@click.option('--browser/--no-browser', default=True, help='Open browser automatically')
+@click.option('--template', type=click.Path(exists=True), help='Custom visualization template')
+def audiovis(
+    host: str,
+    port: int,
+    width: int,
+    height: int,
+    fps: int,
+    pattern: str,
+    color_mode: str,
+    sample_rate: int,
+    block_size: int,
+    device: int,
+    browser: bool,
+    template: Optional[Path]
+):
+    """Launch audio-reactive ASCII visualization.
+    
+    This command starts a WebSocket server that:
+    1. Captures and analyzes audio input in real-time
+    2. Generates ASCII art patterns based on audio features
+    3. Serves a web interface for visualization
+    
+    The visualization can be viewed in any modern web browser and includes:
+    - Multiple pattern styles (wave, mandala, field)
+    - Different color modes (spectrum, intensity, frequency)
+    - Real-time audio spectrum display
+    - Performance metrics
+    
+    Example usage:
+    \b
+    # Start visualization with default settings
+    word-manifold audiovis
+    
+    \b
+    # Use specific audio device and custom settings
+    word-manifold audiovis --device 1 --pattern mandala --fps 60
+    
+    \b
+    # Use custom visualization template
+    word-manifold audiovis --template my_template.html
+    """
+    try:
+        # Check for sounddevice dependency
+        try:
+            import sounddevice as sd
+        except ImportError:
+            raise click.ClickException(
+                "sounddevice not found. Please install with: pip install sounddevice"
+            )
+        
+        # Initialize audio and visualizer configs
+        AudioConfig = get_audiovis().AudioConfig
+        VisualizerConfig = get_audiovis().VisualizerConfig
+        
+        audio_config = AudioConfig(
+            sample_rate=sample_rate,
+            block_size=block_size,
+            device=device
+        )
+        
+        vis_config = VisualizerConfig(
+            width=width,
+            height=height,
+            fps=fps,
+            pattern_style=pattern,
+            color_mode=color_mode
+        )
+        
+        # Create visualizer
+        AudioVisualizer = get_audiovis().AudioVisualizer
+        visualizer = AudioVisualizer(
+            audio_config=audio_config,
+            vis_config=vis_config
+        )
+        
+        # Start visualization in background thread
+        vis_thread = threading.Thread(target=visualizer.start)
+        vis_thread.daemon = True
+        vis_thread.start()
+        
+        # Get template path
+        if template:
+            template_path = Path(template)
+        else:
+            template_dir = Path(__file__).parent / 'templates'
+            template_path = template_dir / 'audiovis.html'
+        
+        if not template_path.exists():
+            logger.error(f"Template not found: {template_path}")
+            return
+            
+        # Create HTTP server for serving template
+        from aiohttp import web
+        import aiohttp_cors
+        
+        async def serve_template(request):
+            return web.FileResponse(template_path)
+            
+        async def run_server():
+            app = web.Application()
+            app.router.add_get('/', serve_template)
+            
+            # Configure CORS
+            cors = aiohttp_cors.setup(app, defaults={
+                "*": aiohttp_cors.ResourceOptions(
+                    allow_credentials=True,
+                    expose_headers="*",
+                    allow_headers="*"
+                )
+            })
+            
+            for route in list(app.router.routes()):
+                cors.add(route)
+            
+            # Start server
+            server_url = f'http://{host}:{port}'
+            ws_url = f'ws://{host}:{port}'
+            
+            logger.info(f"Starting visualization server at {server_url}")
+            logger.info(f"WebSocket endpoint: {ws_url}")
+            
+            if browser:
+                # Open browser after short delay
+                def open_browser():
+                    time.sleep(1.5)  # Wait for server to start
+                    webbrowser.open(server_url)
+                
+                browser_thread = threading.Thread(target=open_browser)
+                browser_thread.daemon = True
+                browser_thread.start()
+            
+            # Run server
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, host, port)
+            await site.start()
+            
+            # Start WebSocket server
+            await visualizer.start_server(host=host, port=port)
+            
+            try:
+                # Run forever
+                await asyncio.Future()
+            except KeyboardInterrupt:
+                logger.info("Stopping visualization server...")
+            finally:
+                visualizer.stop()
+                await runner.cleanup()
+        
+        # Run the async server
+        asyncio.run(run_server())
+            
+    except Exception as e:
+        logger.error(f"Error starting visualization: {e}", exc_info=True)
+        raise click.ClickException(str(e))
+
 cli.add_command(manifold)
 cli.add_command(timeseries)
 cli.add_command(server)
+cli.add_command(audiovis)
 
 if __name__ == '__main__':
     cli.main(standalone_mode=False) 
