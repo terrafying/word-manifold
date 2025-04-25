@@ -60,6 +60,7 @@ setup(
         "ffmpeg-python>=0.2.0",  # For video generation
         "imageio>=2.37.0",  # For GIF creation
         "umap-learn>=0.5.7",  # For dimensionality reduction
+        "hdbscan>=0.8.33",  # For recursive clustering
         "sounddevice>=0.5.1",  # For audio feedback (optional)
     ],
     extras_require={

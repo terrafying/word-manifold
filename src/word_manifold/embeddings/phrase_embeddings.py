@@ -20,9 +20,11 @@ from transformers import (
     AutoModelForSequenceClassification,
     pipeline
 )
+from sentence_transformers import SentenceTransformer
+import gc
 
 # Model configuration
-BACKUP_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+BACKUP_MODEL = "sentence-transformers/all-MiniLM-L6-v2"  # Using smaller model as backup
 
 # Configure module logger
 logger = logging.getLogger(__name__)
@@ -48,27 +50,30 @@ if not logger.handlers:
     debug_handler.setFormatter(debug_formatter)
     logger.addHandler(debug_handler)
 
-# Load spaCy model with improved error handling
-def load_spacy_model(model_name: str = 'en_core_web_lg') -> spacy.language.Language:
-    """Load spaCy model with fallback options."""
-    try:
-        logger.info(f"Loading spaCy model '{model_name}'")
-        return spacy.load(model_name)
-    except OSError:
-        logger.warning(f"spaCy model '{model_name}' not found, downloading...")
-        try:
-            spacy.cli.download(model_name)
-            return spacy.load(model_name)
-        except Exception as e:
-            logger.error(f"Failed to download {model_name}: {e}")
-            logger.info("Falling back to en_core_web_sm")
-            try:
-                return spacy.load('en_core_web_sm')
-            except OSError:
-                spacy.cli.download('en_core_web_sm')
-                return spacy.load('en_core_web_sm')
+# Lazy loading of spaCy model
+_spacy_model = None
 
-nlp = load_spacy_model()
+def get_spacy_model(model_name: str = 'en_core_web_lg') -> spacy.language.Language:
+    """Load spaCy model with fallback options."""
+    global _spacy_model
+    if _spacy_model is None:
+        try:
+            logger.info(f"Loading spaCy model '{model_name}'")
+            _spacy_model = spacy.load(model_name)
+        except OSError:
+            logger.warning(f"spaCy model '{model_name}' not found, downloading...")
+            try:
+                spacy.cli.download(model_name)
+                _spacy_model = spacy.load(model_name)
+            except Exception as e:
+                logger.error(f"Failed to download {model_name}: {e}")
+                logger.info("Falling back to en_core_web_sm")
+                try:
+                    _spacy_model = spacy.load('en_core_web_sm')
+                except OSError:
+                    spacy.cli.download('en_core_web_sm')
+                    _spacy_model = spacy.load('en_core_web_sm')
+    return _spacy_model
 
 # Enhanced emotion anchors with more nuanced categories
 EMOTION_CATEGORIES = {
@@ -88,6 +93,8 @@ def get_emotion_vector(emotion: str) -> np.ndarray:
     """Get cached emotion vector for a category."""
     words = EMOTION_CATEGORIES[emotion]
     vectors = []
+    
+    nlp = get_spacy_model()
     
     # Try each word in the category
     for word in words:
@@ -113,12 +120,19 @@ def get_emotion_vector(emotion: str) -> np.ndarray:
     avg_vector = np.mean(vectors, axis=0)
     return avg_vector / np.linalg.norm(avg_vector)
 
-# Initialize emotion anchors
-EMOTION_ANCHORS = {}
-for emotion in EMOTION_CATEGORIES:
-    vector = get_emotion_vector(emotion)
-    if np.any(vector):  # Only add emotions with non-zero vectors
-        EMOTION_ANCHORS[emotion] = vector
+# Initialize emotion anchors lazily
+_EMOTION_ANCHORS = None
+
+def get_emotion_anchors():
+    """Get emotion anchors, initializing them if needed."""
+    global _EMOTION_ANCHORS
+    if _EMOTION_ANCHORS is None:
+        _EMOTION_ANCHORS = {}
+        for emotion in EMOTION_CATEGORIES:
+            vector = get_emotion_vector(emotion)
+            if np.any(vector):  # Only add emotions with non-zero vectors
+                _EMOTION_ANCHORS[emotion] = vector
+    return _EMOTION_ANCHORS
 
 class PhraseEmbedding:
     """
@@ -141,12 +155,12 @@ class PhraseEmbedder:
     
     def __init__(
         self,
-        model_name: str = "BAAI/bge-large-en-v1.5",  # Updated to use a more recent model
-        emotion_model_name: str = "SamLowe/roberta-base-go_emotions",
-        cache_size: int = 1000,
+        model_name: str = "sentence-transformers/all-MiniLM-L12-v2",  # Using smaller default model
+        emotion_model_name: str = "j-hartmann/emotion-english-distilroberta-base",  # Smaller emotion model
+        cache_size: int = 500,  # Reduced cache size
         use_gpu: bool = True,
-        batch_size: int = 32,
-        max_length: int = 8192
+        batch_size: int = 16,  # Smaller batch size
+        max_length: int = 512  # Reduced max length
     ):
         """
         Initialize the PhraseEmbedder.
@@ -169,35 +183,42 @@ class PhraseEmbedder:
         # Initialize models
         self._initialize_models()
         
-        # Configure caches
+        # Configure caches with size limits
         self.get_embedding = lru_cache(maxsize=cache_size)(self._get_embedding_uncached)
         self.get_emotion_vector = lru_cache(maxsize=cache_size)(self._get_emotion_vector_uncached)
         
         # Use the globally loaded spaCy model
-        self.nlp = nlp
+        self.nlp = get_spacy_model()
         
-        # Register custom extensions
-        self._register_extensions()
-        
-        # Initialize emotion cache
+        # Initialize emotion cache with size limit
         self._emotion_cache = {}
+        self._max_emotion_cache = 1000
+        
+        # Memory management
+        self._memory_warning_threshold = 0.8
     
     def _initialize_models(self) -> None:
-        """Initialize embedding and emotion models with fallback options."""
-        # Initialize embedding model
+        """Initialize embedding and emotion models with memory optimization."""
         try:
             logger.info(f"Loading embedding model: {self.model_name}")
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, trust_remote_code=True)
-            self.model = AutoModel.from_pretrained(self.model_name, trust_remote_code=True).to(self.device)
-            self.model.eval()
+            self.model = SentenceTransformer(self.model_name)
+            self.tokenizer = self.model.tokenizer  # Get tokenizer from the model
+            self.model.to(self.device)
+            
+            # Clear GPU cache after model loading
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
         except Exception as e:
             logger.warning(f"Failed to load {self.model_name}: {e}")
             logger.info(f"Attempting to load backup model: {BACKUP_MODEL}")
             try:
                 self.model_name = BACKUP_MODEL
-                self.tokenizer = AutoTokenizer.from_pretrained(BACKUP_MODEL, trust_remote_code=True)
-                self.model = AutoModel.from_pretrained(BACKUP_MODEL, trust_remote_code=True).to(self.device)
-                self.model.eval()
+                self.model = SentenceTransformer(BACKUP_MODEL)
+                self.tokenizer = self.model.tokenizer  # Get tokenizer from backup model
+                self.model.to(self.device)
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             except Exception as e2:
                 logger.error(f"Failed to load backup model: {e2}")
                 raise RuntimeError("Could not initialize embedding model")
@@ -211,10 +232,117 @@ class PhraseEmbedder:
                 device=0 if torch.cuda.is_available() else -1,
                 top_k=None
             )
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         except Exception as e:
             logger.error(f"Failed to load emotion model: {e}")
             raise RuntimeError("Could not initialize emotion analysis model")
-    
+            
+    def _check_memory(self) -> bool:
+        """Check if memory usage is above threshold."""
+        if torch.cuda.is_available():
+            memory_allocated = torch.cuda.memory_allocated()
+            memory_reserved = torch.cuda.memory_reserved()
+            if memory_allocated / memory_reserved > self._memory_warning_threshold:
+                return True
+        return False
+        
+    def _clear_caches(self) -> None:
+        """Clear caches to free memory."""
+        self.get_embedding.cache_clear()
+        self.get_emotion_vector.cache_clear()
+        self._emotion_cache.clear()
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            
+    def _manage_emotion_cache(self) -> None:
+        """Manage emotion cache size."""
+        if len(self._emotion_cache) > self._max_emotion_cache:
+            # Remove oldest entries
+            num_to_remove = len(self._emotion_cache) - self._max_emotion_cache
+            for _ in range(num_to_remove):
+                self._emotion_cache.popitem(last=False)
+                
+    def get_embeddings_batch(
+        self,
+        texts: List[str],
+        batch_size: Optional[int] = None,
+        show_progress: bool = False
+    ) -> Dict[str, np.ndarray]:
+        """Get embeddings for multiple texts efficiently using batching."""
+        batch_size = batch_size or self.batch_size
+        results = {}
+        
+        # Create iterator
+        batches = range(0, len(texts), batch_size)
+        if show_progress:
+            batches = tqdm(batches, desc="Getting embeddings")
+        
+        for i in batches:
+            # Check memory before processing batch
+            if self._check_memory():
+                logger.warning("High memory usage detected, clearing caches")
+                self._clear_caches()
+                
+            batch = texts[i:i + batch_size]
+            
+            # Process batch with memory optimization
+            with torch.no_grad():
+                embeddings = self.model.encode(
+                    batch,
+                    batch_size=batch_size,
+                    show_progress_bar=False,
+                    convert_to_numpy=True
+                )
+                
+            # Store results
+            for text, embedding in zip(batch, embeddings):
+                results[text] = embedding
+                
+        return results
+        
+    def get_emotion_vectors_batch(
+        self,
+        texts: List[str],
+        batch_size: Optional[int] = None,
+        show_progress: bool = False
+    ) -> Dict[str, np.ndarray]:
+        """Get emotion vectors for multiple texts efficiently using batching."""
+        batch_size = batch_size or self.batch_size
+        results = {}
+        
+        # Create iterator
+        batches = range(0, len(texts), batch_size)
+        if show_progress:
+            batches = tqdm(batches, desc="Getting emotion vectors")
+        
+        for i in batches:
+            # Check memory
+            if self._check_memory():
+                self._clear_caches()
+                
+            batch = texts[i:i + batch_size]
+            
+            # Get emotion predictions for batch
+            predictions = self.emotion_pipeline(batch, batch_size=batch_size)
+            
+            # Process each prediction
+            for text, result in zip(batch, predictions):
+                emotions = {label: score for label, score in zip(result['labels'], result['scores'])}
+                emotion_vector = np.array(list(emotions.values()))
+                emotion_vector = emotion_vector / np.linalg.norm(emotion_vector)
+                results[text] = emotion_vector
+                
+            # Manage emotion cache
+            self._manage_emotion_cache()
+                
+        return results
+        
+    def __del__(self):
+        """Cleanup when object is deleted."""
+        self._clear_caches()
+
     def _register_extensions(self):
         """Register all custom spaCy extensions."""
         extensions = {
@@ -255,31 +383,14 @@ class PhraseEmbedder:
         # Add instruction for query-style embedding
         query = f'Instruct: Represent this text for retrieval\nQuery: {text}'
         
-        # Tokenize and get embedding
-        inputs = self.tokenizer(
+        # Get embedding directly from the model
+        embedding = self.model.encode(
             query,
-            max_length=self.max_length,
-            padding=True,
-            truncation=True,
-            return_tensors='pt'
-        ).to(self.device)
+            convert_to_tensor=True,
+            normalize_embeddings=True
+        )
         
-        outputs = self.model(**inputs)
-        
-        # Use last token pooling
-        attention_mask = inputs['attention_mask']
-        last_hidden = outputs.last_hidden_state
-        
-        if attention_mask[:, -1].sum() == attention_mask.shape[0]:
-            pooled = last_hidden[:, -1]
-        else:
-            sequence_lengths = attention_mask.sum(dim=1) - 1
-            batch_size = last_hidden.shape[0]
-            pooled = last_hidden[torch.arange(batch_size, device=self.device), sequence_lengths]
-        
-        # Normalize embedding
-        embedding = torch.nn.functional.normalize(pooled, p=2, dim=1)
-        return embedding.cpu().numpy()[0]
+        return embedding.cpu().numpy()
     
     def _get_emotion_vector_uncached(self, text: str) -> np.ndarray:
         """Get emotion vector for text without caching.
@@ -300,106 +411,6 @@ class PhraseEmbedder:
         # Normalize to unit vector
         emotion_vector = emotion_vector / np.linalg.norm(emotion_vector)
         return emotion_vector
-    
-    def get_embeddings_batch(
-        self,
-        texts: List[str],
-        batch_size: Optional[int] = None,
-        show_progress: bool = False
-    ) -> Dict[str, np.ndarray]:
-        """Get embeddings for multiple texts efficiently using batching.
-        
-        Args:
-            texts: List of texts to embed
-            batch_size: Optional custom batch size
-            show_progress: Whether to show progress bar
-            
-        Returns:
-            Dictionary mapping texts to their embedding vectors
-        """
-        batch_size = batch_size or self.batch_size
-        results = {}
-        
-        # Create iterator
-        batches = range(0, len(texts), batch_size)
-        if show_progress:
-            batches = tqdm(batches, desc="Getting embeddings")
-        
-        for i in batches:
-            batch = texts[i:i + batch_size]
-            # Add instruction for each text
-            queries = [f'Instruct: Represent this text for retrieval\nQuery: {text}' for text in batch]
-            
-            # Tokenize batch
-            inputs = self.tokenizer(
-                queries,
-                max_length=self.max_length,
-                padding=True,
-                truncation=True,
-                return_tensors='pt'
-            ).to(self.device)
-            
-            outputs = self.model(**inputs)
-            
-            # Use last token pooling for batch
-            attention_mask = inputs['attention_mask']
-            last_hidden = outputs.last_hidden_state
-            
-            if attention_mask[:, -1].sum() == attention_mask.shape[0]:
-                pooled = last_hidden[:, -1]
-            else:
-                sequence_lengths = attention_mask.sum(dim=1) - 1
-                batch_size = last_hidden.shape[0]
-                pooled = last_hidden[torch.arange(batch_size, device=self.device), sequence_lengths]
-            
-            # Normalize embeddings
-            embeddings = torch.nn.functional.normalize(pooled, p=2, dim=1)
-            
-            # Store results
-            for text, embedding in zip(batch, embeddings.cpu().numpy()):
-                results[text] = embedding
-                
-        return results
-    
-    def get_emotion_vectors_batch(
-        self,
-        texts: List[str],
-        batch_size: Optional[int] = None,
-        show_progress: bool = False
-    ) -> Dict[str, np.ndarray]:
-        """Get emotion vectors for multiple texts efficiently using batching.
-        
-        Args:
-            texts: List of texts to analyze
-            batch_size: Optional custom batch size
-            show_progress: Whether to show progress bar
-            
-        Returns:
-            Dictionary mapping texts to their emotion vectors
-        """
-        batch_size = batch_size or self.batch_size
-        results = {}
-        
-        # Create iterator
-        batches = range(0, len(texts), batch_size)
-        if show_progress:
-            batches = tqdm(batches, desc="Getting emotion vectors")
-        
-        for i in batches:
-            batch = texts[i:i + batch_size]
-            
-            # Get emotion predictions for batch
-            predictions = self.emotion_pipeline(batch)
-            
-            # Process each prediction
-            for text, result in zip(batch, predictions):
-                # Convert to normalized vector
-                emotions = {label: score for label, score in zip(result['labels'], result['scores'])}
-                emotion_vector = np.array(list(emotions.values()))
-                emotion_vector = emotion_vector / np.linalg.norm(emotion_vector)
-                results[text] = emotion_vector
-        
-        return results
     
     def analyze_text(
         self,
@@ -620,7 +631,7 @@ class PhraseEmbedder:
         for token in doc:
             if token.has_vector:
                 vector = token.vector
-                for emotion, anchor in EMOTION_ANCHORS.items():
+                for emotion, anchor in get_emotion_anchors().items():
                     similarity = np.dot(vector, anchor)
                     emotion_scores[emotion] = emotion_scores.get(emotion, 0) + max(0, similarity)
         

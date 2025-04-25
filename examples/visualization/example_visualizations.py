@@ -4,19 +4,22 @@ Example Visualizations
 This module demonstrates the core visualization capabilities:
 1. Ritual evolution visualization using HyperTools
 2. Semantic shape visualization for textual analysis
+3. Symbolic ASCII art visualization
 """
 
 import logging
 from pathlib import Path
-from matplotlib import pyplot as plt
-import numpy as np
 import os
 from typing import Dict, List, Optional
+
+import numpy as np
+from matplotlib import pyplot as plt
 
 from word_manifold.embeddings.word_embeddings import WordEmbeddings
 from word_manifold.manifold.vector_manifold import VectorManifold
 from word_manifold.visualization.hypertools_visualizer import HyperToolsVisualizer
-from word_manifold.visualization.shape_visualizer import ShapeVisualizer
+from word_manifold.visualization.shape_visualizer import ShapeVisualizer, ExportConfig
+from word_manifold.visualization.symbolic_visualizer import SymbolicVisualizer
 from word_manifold.automata.cellular_rules import create_predefined_rules
 
 # Configure logging
@@ -29,6 +32,7 @@ class VisualizationResult:
         self.ritual_evolution_success = False
         self.shape_field_success = False
         self.comparative_success = False
+        self.symbolic_success = False
         self.saved_files: List[str] = []
     
     def add_saved_file(self, filepath: str):
@@ -41,7 +45,8 @@ class VisualizationResult:
         return any([
             self.ritual_evolution_success,
             self.shape_field_success,
-            self.comparative_success
+            self.comparative_success,
+            self.symbolic_success
         ])
     
     def get_summary(self) -> str:
@@ -56,6 +61,8 @@ class VisualizationResult:
             summary += "\n- Shape field visualization"
         if self.comparative_success:
             summary += "\n- Comparative visualization"
+        if self.symbolic_success:
+            summary += "\n- Symbolic ASCII visualization"
         
         if self.saved_files:
             summary += "\n\nFiles saved:"
@@ -68,9 +75,9 @@ def ritual_evolution_example(result: VisualizationResult):
     """Demonstrate ritual evolution visualization."""
     try:
         # Initialize embeddings and manifold
-        embeddings = WordEmbeddings(model_name='en_core_web_sm')
+        embeddings = WordEmbeddings()
         
-        # Define ritual sequence with key terms
+        # Define ritual terms
         terms = [
             "light", "darkness", "wisdom", "understanding",
             "beauty", "strength", "mercy", "severity"
@@ -78,86 +85,46 @@ def ritual_evolution_example(result: VisualizationResult):
         
         # Load terms into embeddings
         embeddings.load_terms(terms)
-        
-        # Create term trajectories through ritual phases
-        term_trajectories = {term: [] for term in terms}
-        rules = create_predefined_rules()
-        
-        # For each phase, create a new manifold and apply the rule
-        for term in terms:
-            # Get initial vector
-            initial_vector = embeddings.get_embedding(term)
-            term_trajectories[term].append(initial_vector)
-            
-            current_vector = initial_vector.copy()
-            
-            # Phase 1: Equilibrium
-            try:
-                manifold = VectorManifold(embeddings)
-                rules["equilibrium"].apply(manifold, generation=0)
-                transformed = manifold.get_term_cell(term).centroid
-                term_trajectories[term].append(transformed)
-                current_vector = transformed
-            except Exception as e:
-                logger.warning(f"Error applying equilibrium rule for term {term}", exc_info=e)
-                term_trajectories[term].append(current_vector)
-            
-            # Phase 2: The Great Work
-            try:
-                manifold = VectorManifold(embeddings)
-                rules["great_work"].apply(manifold, generation=1)
-                transformed = manifold.get_term_cell(term).centroid
-                term_trajectories[term].append(transformed)
-                current_vector = transformed
-            except Exception as e:
-                logger.warning(f"Error applying great work rule for term {term}", exc_info=e)
-                term_trajectories[term].append(current_vector)
-            
-            # Phase 3: Star
-            try:
-                manifold = VectorManifold(embeddings)
-                rules["star"].apply(manifold, generation=2)
-                transformed = manifold.get_term_cell(term).centroid
-                term_trajectories[term].append(transformed)
-            except Exception as e:
-                logger.warning(f"Error applying star rule for term {term}", exc_info=e)
-                term_trajectories[term].append(current_vector)
+        manifold = VectorManifold(embeddings)
         
         # Create visualizer
         visualizer = HyperToolsVisualizer(
-            output_dir="visualizations/rituals",
-            interactive=True,
+            word_embeddings=embeddings,
+            output_dir="visualizations/hypertools",
             n_dimensions=3
         )
         
-        # Create static visualization
-        try:
-            filepath = visualizer.visualize_term_evolution(
-                term_trajectories=term_trajectories,
-                phase_names=["Initial", "Equilibrium", "Great Work", "Illumination"],
-                title="Ritual Term Evolution"
-            )
-            if filepath:
-                result.add_saved_file(filepath)
-                result.ritual_evolution_success = True
-        except Exception as e:
-            logger.error("Error creating static visualization", exc_info=e)
+        # Create term trajectories through ritual phases
+        rules = create_predefined_rules()
+        term_trajectories = {}
         
-        # Create animation
-        try:
-            filepath = visualizer.create_animated_ritual(
-                term_trajectories=term_trajectories,
-                phase_names=["Initial", "Equilibrium", "Great Work", "Illumination"],
-                title="Ritual Evolution Animation",
-                duration=10.0,
-                fps=30,
-                add_trails=True
-            )
-            if filepath:
-                result.add_saved_file(filepath)
-                result.ritual_evolution_success = True
-        except Exception as e:
-            logger.error("Error creating animation", exc_info=e)
+        # Apply transformations and track positions
+        for term in terms:
+            positions = []
+            current_pos = embeddings.get_embedding(term)
+            positions.append(current_pos)
+            
+            # Apply each rule and track position
+            for rule in rules.values():
+                transformed = manifold.transform(
+                    current_pos.reshape(1, -1),
+                    {'rule': rule.name}
+                )
+                positions.append(transformed[0])
+                current_pos = transformed[0]
+            
+            term_trajectories[term] = np.array(positions)
+        
+        # Create visualization
+        viz_path = visualizer.visualize_term_evolution(
+            term_trajectories,
+            title="Ritual Term Evolution",
+            save_path="visualizations/ritual_evolution.png"
+        )
+        
+        if viz_path:
+            result.add_saved_file(viz_path)
+            result.ritual_evolution_success = True
             
     except Exception as e:
         logger.error("Error in ritual evolution example", exc_info=e)
@@ -165,8 +132,14 @@ def ritual_evolution_example(result: VisualizationResult):
 def semantic_shape_example(result: VisualizationResult):
     """Demonstrate semantic shape visualization."""
     try:
-        # Initialize visualizer
-        visualizer = ShapeVisualizer()
+        # Initialize visualizer with explicit output directory
+        visualizer = ShapeVisualizer(
+            export_config=ExportConfig(
+                output_dir="visualizations/shapes",
+                format="mp4",
+                save_frames=True
+            )
+        )
         
         # Example 1: Ritual text visualization
         ritual_text = """
@@ -178,13 +151,24 @@ def semantic_shape_example(result: VisualizationResult):
         """
         
         try:
-            filepath = visualizer.create_shape_field(
-                ritual_text,
-                chunk_size=1  # Process one sentence at a time
+            # Create and save shape field animation
+            animation, frames = visualizer.visualize_shape_evolution(
+                ritual_text.split('\n'),  # Process each line
+                duration=10.0,  # 10 second animation
+                interpolation_steps=45  # Smoother transitions
             )
-            if filepath:
-                result.add_saved_file(filepath)
+            
+            # Export the animation
+            output_path = visualizer.export_animation(
+                animation,
+                "ritual_shape_field",
+                frames
+            )
+            
+            if output_path:
+                result.add_saved_file(str(output_path))
                 result.shape_field_success = True
+                
         except Exception as e:
             logger.error("Error creating shape field", exc_info=e)
         
@@ -196,34 +180,100 @@ def semantic_shape_example(result: VisualizationResult):
         ]
         
         try:
-            filepath = visualizer.create_comparative_visualization(
+            # Create and save comparative visualization
+            animation, frames = visualizer.visualize_shape_evolution(
                 texts,
-                labels=["Mystery", "Passion", "Wisdom"]
+                duration=15.0,  # 15 second animation
+                interpolation_steps=45  # Smoother transitions
             )
-            if filepath:
-                result.add_saved_file(filepath)
+            
+            # Export the animation
+            output_path = visualizer.export_animation(
+                animation,
+                "comparative_shapes",
+                frames
+            )
+            
+            if output_path:
+                result.add_saved_file(str(output_path))
                 result.comparative_success = True
+                
         except Exception as e:
             logger.error("Error creating comparative visualization", exc_info=e)
+            
             
     except Exception as e:
         logger.error("Error in semantic shape example", exc_info=e)
 
+def symbolic_visualization_example(result: VisualizationResult):
+    """Demonstrate symbolic ASCII visualization."""
+    try:
+        # Initialize embeddings and visualizer
+        embeddings = WordEmbeddings()
+        visualizer = SymbolicVisualizer(
+            word_embeddings=embeddings,
+            width=100,  # Wider field for better patterns
+            height=50   # Taller field for better patterns
+        )
+        
+        # Example 1: Single term visualization
+        term = "enlightenment"
+        ascii_art = visualizer.visualize_term(term)
+        
+        # Save to file
+        output_path = "visualizations/symbolic/enlightenment_mandala.txt"
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, 'w') as f:
+            f.write(ascii_art)
+        result.add_saved_file(output_path)
+        
+        # Example 2: Transformation sequence
+        frames = visualizer.visualize_transformation(
+            "chaos",
+            "order",
+            steps=10
+        )
+        
+        # Save transformation frames
+        output_path = "visualizations/symbolic/chaos_to_order.txt"
+        with open(output_path, 'w') as f:
+            for i, frame in enumerate(frames):
+                f.write(f"Frame {i+1}:\n")
+                f.write(frame)
+                f.write("\n\n" + "="*80 + "\n\n")
+        result.add_saved_file(output_path)
+        
+        # Example 3: Semantic field
+        terms = [
+            "wisdom", "understanding", "knowledge",
+            "beauty", "severity", "mercy"
+        ]
+        field = visualizer.create_semantic_field(terms)
+        
+        # Save field visualization
+        output_path = "visualizations/symbolic/semantic_field.txt"
+        with open(output_path, 'w') as f:
+            f.write(field)
+        result.add_saved_file(output_path)
+        
+        result.symbolic_success = True
+        
+    except Exception as e:
+        logger.error("Error in symbolic visualization example", exc_info=e)
+
 def main():
-    """Run visualization examples."""
-    # Set environment variable for tokenizers
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    
-    # Initialize result tracking
+    """Run all visualization examples."""
     result = VisualizationResult()
     
-    try:
-        ritual_evolution_example(result)
-        semantic_shape_example(result)
-    except Exception as e:
-        logger.error(f"Error running examples: {str(e)}")
+    print("Creating ritual evolution visualization...")
+    ritual_evolution_example(result)
     
-    # Print appropriate summary
+    print("\nCreating semantic shape visualization...")
+    semantic_shape_example(result)
+    
+    print("\nCreating symbolic ASCII visualization...")
+    symbolic_visualization_example(result)
+    
     print(result.get_summary())
 
 if __name__ == "__main__":

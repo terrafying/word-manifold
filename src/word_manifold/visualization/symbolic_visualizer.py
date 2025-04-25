@@ -10,7 +10,7 @@ The visualizer creates living ASCII mandalas that transform based on semantic me
 """
 
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple, Set, Union, Any
 import logging
 from dataclasses import dataclass
 from ..embeddings.word_embeddings import WordEmbeddings
@@ -27,21 +27,27 @@ class SymbolicPattern:
     energy: float  # Current energy level (affects transformation rate)
     resonance: Set[str]  # Terms that resonate with this pattern
 
+    def __repr__(self) -> str:
+        """String representation of the pattern."""
+        return f"SymbolicPattern(meaning='{self.meaning}', energy={self.energy:.2f}, n_transforms={len(self.transformations)})"
+
 class SymbolicVisualizer:
     """Creates living ASCII mandalas from semantic spaces."""
     
     # Symbol sets for different semantic qualities
-    ABSTRACT_SYMBOLS = "◇○□△▽⬡⬢⬣"  # Abstract concepts
-    ORGANIC_SYMBOLS = "~≈≋∿☘❀❁❃"    # Natural/flowing concepts
-    TECH_SYMBOLS = "⌘⌥⌦⌬⌸⌹⍋⍚"       # Technological concepts
-    SACRED_SYMBOLS = "☯☮✴✵✶✷"      # Spiritual concepts
-    EMOTIONAL_SYMBOLS = "♡♢♤♧♪♫"    # Emotional concepts
+    ABSTRACT_SYMBOLS: str = "◇○□△▽⬡⬢⬣"  # Abstract concepts
+    ORGANIC_SYMBOLS: str = "~≈≋∿☘❀❁❃"    # Natural/flowing concepts
+    TECH_SYMBOLS: str = "⌘⌥⌦⌬⌸⌹⍋⍚"       # Technological concepts
+    SACRED_SYMBOLS: str = "☯☮✴✵✶✷"      # Spiritual concepts
+    EMOTIONAL_SYMBOLS: str = "♡♢♤♧♪♫"    # Emotional concepts
     
-    def __init__(self, 
-                 word_embeddings: WordEmbeddings,
-                 width: int = 80,
-                 height: int = 40,
-                 frame_rate: float = 1.0):
+    def __init__(
+        self, 
+        word_embeddings: WordEmbeddings,
+        width: int = 80,
+        height: int = 40,
+        frame_rate: float = 1.0
+    ) -> None:
         """
         Initialize the visualizer.
         
@@ -56,10 +62,18 @@ class SymbolicVisualizer:
         self.height = height
         self.frame_rate = frame_rate
         self.field = np.full((height, width), ' ', dtype=str)
-        self.patterns = {}  # Active symbolic patterns
+        self.patterns: Dict[str, SymbolicPattern] = {}  # Active symbolic patterns
         
     def _select_base_symbols(self, term: str) -> str:
-        """Select appropriate symbols based on term semantics."""
+        """
+        Select appropriate symbols based on term semantics.
+        
+        Args:
+            term: The term to analyze
+            
+        Returns:
+            String of symbols appropriate for the term's semantic meaning
+        """
         embedding = self.word_embeddings.get_embedding(term)
         if embedding is None:
             return self.ABSTRACT_SYMBOLS
@@ -78,7 +92,15 @@ class SymbolicVisualizer:
         return symbol_sets[np.argmax(sims)]
     
     def create_pattern(self, term: str) -> SymbolicPattern:
-        """Create a new symbolic pattern for a term."""
+        """
+        Create a new symbolic pattern for a term.
+        
+        Args:
+            term: The term to create a pattern for
+            
+        Returns:
+            SymbolicPattern instance representing the term
+        """
         base_symbols = self._select_base_symbols(term)
         
         # Create transformations based on semantic neighbors
@@ -96,9 +118,23 @@ class SymbolicVisualizer:
             resonance=set(t for t, _ in similar_terms)
         )
     
-    def _generate_mandala(self, pattern: SymbolicPattern, center: Tuple[int, int], 
-                         radius: int) -> np.ndarray:
-        """Generate a mandala pattern centered at the given point."""
+    def _generate_mandala(
+        self, 
+        pattern: SymbolicPattern, 
+        center: Tuple[int, int], 
+        radius: int
+    ) -> np.ndarray:
+        """
+        Generate a mandala pattern centered at the given point.
+        
+        Args:
+            pattern: The symbolic pattern to visualize
+            center: (y, x) coordinates of the mandala center
+            radius: Radius of the mandala in characters
+            
+        Returns:
+            2D numpy array containing the mandala pattern
+        """
         y, x = center
         mandala = np.full((2*radius+1, 2*radius+1), ' ', dtype=str)
         
@@ -115,9 +151,23 @@ class SymbolicVisualizer:
         
         return mandala
     
-    def _apply_transformation(self, pattern: SymbolicPattern, 
-                            mandala: np.ndarray, phase: float) -> np.ndarray:
-        """Apply transformation to the mandala based on phase."""
+    def _apply_transformation(
+        self, 
+        pattern: SymbolicPattern, 
+        mandala: np.ndarray, 
+        phase: float
+    ) -> np.ndarray:
+        """
+        Apply transformation to the mandala based on phase.
+        
+        Args:
+            pattern: The pattern being transformed
+            mandala: The current mandala state
+            phase: Transformation phase (0.0 to 1.0)
+            
+        Returns:
+            Transformed mandala array
+        """
         transformed = mandala.copy()
         
         # Interpolate between transformation states
@@ -133,7 +183,15 @@ class SymbolicVisualizer:
         return transformed
     
     def visualize_term(self, term: str) -> str:
-        """Create a static visualization for a term."""
+        """
+        Create a static visualization for a term.
+        
+        Args:
+            term: The term to visualize
+            
+        Returns:
+            Multi-line string containing the ASCII visualization
+        """
         pattern = self.create_pattern(term)
         center = (self.height // 2, self.width // 2)
         radius = min(self.height, self.width) // 4
@@ -143,9 +201,23 @@ class SymbolicVisualizer:
         # Convert to string
         return '\n'.join(''.join(row) for row in mandala)
     
-    def visualize_transformation(self, term1: str, term2: str, 
-                               steps: int = 10) -> List[str]:
-        """Visualize transformation between two terms."""
+    def visualize_transformation(
+        self, 
+        term1: str, 
+        term2: str, 
+        steps: int = 10
+    ) -> List[str]:
+        """
+        Visualize transformation between two terms.
+        
+        Args:
+            term1: Starting term
+            term2: Ending term
+            steps: Number of transformation steps
+            
+        Returns:
+            List of strings, each representing one frame of the transformation
+        """
         pattern1 = self.create_pattern(term1)
         pattern2 = self.create_pattern(term2)
         center = (self.height // 2, self.width // 2)
@@ -162,14 +234,25 @@ class SymbolicVisualizer:
         return frames
     
     def create_semantic_field(self, terms: List[str]) -> str:
-        """Create a field of interacting patterns for multiple terms."""
+        """
+        Create a field of interacting patterns for multiple terms.
+        
+        Args:
+            terms: List of terms to visualize in the field
+            
+        Returns:
+            Multi-line string containing the ASCII visualization of the field
+        
+        Raises:
+            ValueError: If embeddings cannot be obtained for any term
+        """
         self.field.fill(' ')
         patterns = [self.create_pattern(term) for term in terms]
         
         # Position patterns based on semantic similarity
         embeddings = [self.word_embeddings.get_embedding(term) for term in terms]
         if any(e is None for e in embeddings):
-            return "Error: Could not get embeddings for all terms"
+            raise ValueError("Could not get embeddings for all terms")
             
         # Use PCA to position terms in 2D
         from sklearn.decomposition import PCA

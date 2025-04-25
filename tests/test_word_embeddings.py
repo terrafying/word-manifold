@@ -1,160 +1,315 @@
+"""Tests for WordEmbeddings class with Replicate integration."""
+
 import pytest
-from word_manifold.embeddings.word_embeddings import WordEmbeddings
 import numpy as np
-from sentence_transformers import SentenceTransformer
+from unittest.mock import Mock, patch, MagicMock
+import os
+import json
+import tempfile
+from pathlib import Path
+import requests
+import logging
+import multiprocessing as mp
+import threading
+import weakref
 
-@pytest.fixture
-def embeddings():
-    """Create a WordEmbeddings instance for testing."""
-    return WordEmbeddings()
+from word_manifold.embeddings.word_embeddings import WordEmbeddings, EmbeddingMode
 
-def test_initialization():
-    """Test basic initialization with default model."""
-    we = WordEmbeddings()
-    assert we.model_name == WordEmbeddings.DEFAULT_MODEL
-    assert we.cache_size == 1024
-    assert isinstance(we.embeddings, dict)
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
-def test_model_fallback():
-    """Test fallback to backup model with invalid model name."""
-    we = WordEmbeddings(model_name="invalid_model_name")
-    assert we.model_name == WordEmbeddings.BACKUP_MODEL
+# Test data
+TEST_TERMS = ["wisdom", "understanding", "beauty", "strength"]
+TEST_EMBEDDING = np.random.rand(384)  # Common embedding size
+MOCK_REPLICATE_RESPONSE = {
+    "embeddings": [TEST_EMBEDDING.tolist() for _ in range(len(TEST_TERMS))],
+    "similar_terms": [("related_term", 0.8) for _ in range(5)]
+}
 
-def test_embedding_generation(embeddings):
-    """Test embedding generation for single and multiple terms."""
-    # Single term
-    term = "test"
-    embedding = embeddings.get_embedding(term)
-    assert isinstance(embedding, np.ndarray)
-    assert embedding.shape == (embeddings.get_embedding_dim(),)
+class MockTermManager:
+    """Mock TermManager for testing."""
+    def __init__(self, model_name=None):
+        self.embeddings = {term: TEST_EMBEDDING for term in TEST_TERMS}
+        self.running = True
+        
+    def get_embedding(self, term):
+        return TEST_EMBEDDING
+        
+    def shutdown(self):
+        self.running = False
+
+@pytest.fixture(scope="function")
+def mock_term_manager():
+    """Mock TermManager to avoid multiprocessing issues in tests."""
+    with patch("word_manifold.embeddings.term_manager.TermManager", MockTermManager):
+        yield
+
+@pytest.fixture(scope="function")
+def mock_replicate():
+    """Mock Replicate API responses."""
+    with patch("replicate.models.get") as mock_get:
+        mock_model = Mock()
+        mock_model.predict.return_value = MOCK_REPLICATE_RESPONSE
+        mock_get.return_value = mock_model
+        yield mock_get
+
+@pytest.fixture(scope="function")
+def mock_server():
+    """Mock remote server responses."""
+    with patch("requests.get") as mock_get, patch("requests.post") as mock_post:
+        mock_get.return_value.status_code = 200
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {
+            "terms": {term: TEST_EMBEDDING.tolist() for term in TEST_TERMS},
+            "similar_terms": [("related_term", 0.8) for _ in range(5)]
+        }
+        yield (mock_get, mock_post)
+
+@pytest.fixture(scope="function")
+def temp_cache_dir():
+    """Create temporary cache directory."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield Path(tmpdir)
+
+@pytest.mark.parallel
+def test_init_replicate_mode(mock_replicate, mock_term_manager):
+    """Test initialization in Replicate mode."""
+    # Test successful initialization
+    embeddings = WordEmbeddings(
+        mode="replicate",
+        replicate_api_token="test_token",
+        replicate_model="test/model:v1"
+    )
+    assert embeddings.mode == EmbeddingMode.REPLICATE
     
-    # Multiple terms
-    terms = ["test", "example", "word"]
-    batch_embeddings = embeddings.get_embeddings(terms)
-    assert isinstance(batch_embeddings, dict)
-    assert len(batch_embeddings) == len(terms)
-    assert all(isinstance(e, np.ndarray) for e in batch_embeddings.values())
+    # Test missing API token
+    with pytest.raises(ValueError, match="Replicate API token required"):
+        WordEmbeddings(mode="replicate")
+    
+    # Test failed connection with fallback
+    mock_replicate.side_effect = Exception("Connection failed")
+    embeddings = WordEmbeddings(
+        mode="replicate",
+        replicate_api_token="test_token",
+        fallback_mode="local"
+    )
+    assert embeddings.mode == EmbeddingMode.LOCAL
 
-def test_embedding_caching(embeddings):
-    """Test that embeddings are properly cached."""
-    term = "cache_test"
+@pytest.mark.parallel
+def test_init_remote_mode(mock_server, mock_term_manager):
+    """Test initialization in remote mode."""
+    mock_get, _ = mock_server
     
-    # First call should compute embedding
-    first_embedding = embeddings.get_embedding(term)
+    # Test successful initialization
+    embeddings = WordEmbeddings(
+        mode="remote",
+        server_url="http://test-server"
+    )
+    assert embeddings.mode == EmbeddingMode.REMOTE
+    assert embeddings.is_remote
     
-    # Second call should return cached value
-    second_embedding = embeddings.get_embedding(term)
+    # Test missing server URL
+    with pytest.raises(ValueError, match="Server URL required"):
+        WordEmbeddings(mode="remote")
     
-    assert np.array_equal(first_embedding, second_embedding)
-    assert term in embeddings.embeddings
+    # Test failed connection with fallback
+    mock_get.side_effect = requests.exceptions.ConnectionError
+    embeddings = WordEmbeddings(
+        mode="remote",
+        server_url="http://test-server",
+        fallback_mode="local"
+    )
+    assert embeddings.mode == EmbeddingMode.LOCAL
 
-def test_similar_terms(embeddings):
-    """Test finding similar terms."""
-    # Load some test terms
-    test_terms = ["king", "queen", "prince", "princess", "castle"]
+@pytest.mark.parallel
+def test_load_terms_replicate(mock_replicate, mock_term_manager):
+    """Test loading terms using Replicate."""
+    embeddings = WordEmbeddings(
+        mode="replicate",
+        replicate_api_token="test_token"
+    )
+    
+    # Test batch loading
+    embeddings.load_terms(TEST_TERMS)
+    assert all(term in embeddings.terms for term in TEST_TERMS)
+    assert all(isinstance(emb, np.ndarray) for emb in embeddings.terms.values())
+    
+    # Test error handling
+    mock_replicate.return_value.predict.side_effect = Exception("API error")
+    with pytest.raises(Exception, match="API error"):
+        embeddings.load_terms(["new_term"])
+
+@pytest.mark.parallel
+def test_load_terms_remote(mock_server, mock_term_manager):
+    """Test loading terms from remote server."""
+    _, mock_post = mock_server
+    embeddings = WordEmbeddings(
+        mode="remote",
+        server_url="http://test-server"
+    )
+    
+    # Test successful loading
+    embeddings.load_terms(TEST_TERMS)
+    assert all(term in embeddings.terms for term in TEST_TERMS)
+    
+    # Test error handling
+    mock_post.side_effect = requests.exceptions.RequestException("Connection failed")
+    with pytest.raises(requests.exceptions.RequestException):
+        embeddings.load_terms(["new_term"])
+
+@pytest.mark.parallel
+def test_load_terms_local(tmp_path):
+    """Test loading terms in local mode."""
+    # Create embeddings instance with local cache
+    embeddings = WordEmbeddings(
+        mode=EmbeddingMode.LOCAL,
+        cache_dir=tmp_path
+    )
+    
+    # Test terms to load
+    test_terms = ["test", "example", "word"]
+    
+    # Load terms
     embeddings.load_terms(test_terms)
     
-    similar = embeddings.find_similar_terms("king", n=2)
-    assert isinstance(similar, list)
+    # Verify terms were loaded
+    assert all(term in embeddings.terms for term in test_terms)
+    assert all(isinstance(emb, np.ndarray) for emb in embeddings.terms.values())
+    
+    # Test force reload
+    old_embeddings = {term: emb.copy() for term, emb in embeddings.terms.items()}
+    embeddings.load_terms(test_terms, force_reload=True)
+    
+    # Verify embeddings were reloaded
+    assert all(term in embeddings.terms for term in test_terms)
+    assert any(not np.array_equal(old_embeddings[term], embeddings.terms[term]) 
+              for term in test_terms)
+    
+    # Test state persistence
+    state_file = tmp_path / "embeddings_state.json"
+    assert state_file.exists()
+    
+    # Create new instance and verify state loads
+    new_embeddings = WordEmbeddings(
+        mode=EmbeddingMode.LOCAL,
+        cache_dir=tmp_path
+    )
+    assert all(term in new_embeddings.terms for term in test_terms)
+    assert all(np.array_equal(embeddings.terms[term], new_embeddings.terms[term]) 
+              for term in test_terms)
+
+@pytest.mark.parallel
+def test_caching(temp_cache_dir, mock_replicate, mock_term_manager):
+    """Test embedding caching functionality."""
+    embeddings = WordEmbeddings(
+        mode="replicate",
+        replicate_api_token="test_token",
+        cache_dir=temp_cache_dir
+    )
+    
+    # Test cache creation
+    embeddings.load_terms(TEST_TERMS)
+    cache_file = temp_cache_dir / "embeddings.json"
+    assert cache_file.exists()
+    
+    # Test cache loading
+    with open(cache_file) as f:
+        cache_data = json.load(f)
+    assert all(term in cache_data for term in TEST_TERMS)
+    
+    # Test cache update
+    embeddings.load_terms(["new_term"])
+    with open(cache_file) as f:
+        updated_cache = json.load(f)
+    assert "new_term" in updated_cache
+
+@pytest.mark.parallel
+def test_find_similar_terms_replicate(mock_replicate, mock_term_manager):
+    """Test finding similar terms using Replicate."""
+    embeddings = WordEmbeddings(
+        mode="replicate",
+        replicate_api_token="test_token"
+    )
+    
+    # Test with term
+    similar = embeddings.find_similar_terms("wisdom", k=5)
+    assert len(similar) == 5
+    assert all(isinstance(s, tuple) and len(s) == 2 for s in similar)
+    
+    # Test with embedding
+    similar = embeddings.find_similar_terms(
+        "test",
+        k=3,
+        embedding=np.random.rand(384)
+    )
+    assert len(similar) == 3
+
+@pytest.mark.parallel
+def test_find_similar_terms_remote(mock_server, mock_term_manager):
+    """Test finding similar terms from remote server."""
+    embeddings = WordEmbeddings(
+        mode="remote",
+        server_url="http://test-server"
+    )
+    
+    # Test successful search
+    similar = embeddings.find_similar_terms("wisdom", k=5)
+    assert len(similar) == 5
+    
+    # Test with embedding
+    similar = embeddings.find_similar_terms(
+        "test",
+        k=3,
+        embedding=np.random.rand(384)
+    )
+    assert len(similar) == 3
+
+@pytest.mark.parallel
+def test_find_similar_terms_local(mock_term_manager):
+    """Test finding similar terms locally."""
+    embeddings = WordEmbeddings(mode="local")
+    embeddings.load_terms(TEST_TERMS)
+    
+    # Test local similarity search
+    similar = embeddings.find_similar_terms(TEST_TERMS[0], k=2)
     assert len(similar) == 2
-    assert all(t in test_terms for t in similar)
-    assert "king" not in similar  # Should not include the query term
+    assert all(isinstance(s, tuple) and len(s) == 2 for s in similar)
 
-def test_numerological_value(embeddings):
-    """Test numerological value calculation."""
-    # Test basic calculation
-    assert embeddings.calculate_numerological_value("test") <= 21
-    assert embeddings.calculate_numerological_value("") == 0
+@pytest.mark.parallel
+def test_cleanup(mock_term_manager):
+    """Test resource cleanup."""
+    embeddings = WordEmbeddings(mode="local")
+    embeddings.load_terms(TEST_TERMS)
     
-    # Test reduction to Tarot range
-    value = embeddings.calculate_numerological_value("pneumonoultramicroscopicsilicovolcanoconiosis")
-    assert 0 <= value <= 21
+    # Test term manager cleanup
+    assert hasattr(embeddings, 'term_manager')
+    assert embeddings.term_manager.running
+    del embeddings
+    # Cleanup is handled by the mock
 
-def test_term_info(embeddings):
-    """Test comprehensive term information retrieval."""
-    info = embeddings.get_term_info("testing")
+@pytest.mark.parallel
+def test_error_handling(mock_term_manager):
+    """Test error handling and logging."""
+    # Test invalid mode
+    with pytest.raises(ValueError):
+        WordEmbeddings(mode="invalid")
     
-    assert isinstance(info, dict)
-    assert "embedding" in info
-    assert "numerological_value" in info
-    assert "length" in info
-    assert info["length"] == 7
+    # Test missing dependencies
+    with patch.dict('sys.modules', {'replicate': None}):
+        with pytest.raises(ImportError):
+            embeddings = WordEmbeddings(mode="replicate")
+    
+    # Test invalid server URL
+    with pytest.raises(ValueError):
+        WordEmbeddings(mode="remote", server_url="invalid-url")
 
-def test_error_handling(embeddings):
-    """Test error handling for various edge cases."""
-    # Empty string
-    embedding = embeddings.get_embedding("")
-    assert isinstance(embedding, np.ndarray)
-    assert not np.any(embedding)  # Should be zero vector
-    
-    # Very long input
-    long_text = "a" * 1000
-    embedding = embeddings.get_embedding(long_text)
-    assert isinstance(embedding, np.ndarray)
-    
-    # Non-string input should raise TypeError
-    with pytest.raises(TypeError):
-        embeddings.get_embedding(123)
+def pytest_configure(config):
+    """Register parallel marker."""
+    config.addinivalue_line(
+        "markers",
+        "parallel: mark test to run in parallel"
+    )
 
-def test_batch_processing(embeddings):
-    """Test batch processing efficiency."""
-    # Generate a large batch of terms
-    terms = [f"term_{i}" for i in range(100)]
-    
-    # Process in batch
-    batch_results = embeddings.get_embeddings(terms)
-    
-    assert len(batch_results) == len(terms)
-    assert all(isinstance(e, np.ndarray) for e in batch_results.values())
-    
-    # Verify dimensions
-    dim = embeddings.get_embedding_dim()
-    assert all(e.shape == (dim,) for e in batch_results.values())
-
-def test_word_embeddings_initialization():
-    """Test that WordEmbeddings initializes with default model."""
-    embeddings = WordEmbeddings()
-    assert embeddings.model is not None
-    assert isinstance(embeddings.model, SentenceTransformer)
-
-def test_word_embeddings_fallback():
-    """Test that WordEmbeddings falls back to backup model."""
-    embeddings = WordEmbeddings(model_name="invalid_model_name")
-    assert embeddings.model is not None
-    assert isinstance(embeddings.model, SentenceTransformer)
-
-def test_embedding_generation():
-    """Test that embeddings are generated correctly."""
-    embeddings = WordEmbeddings()
-    terms = ["test", "example", "word"]
-    embeddings.load_terms(terms)
-    
-    # Test single term embedding
-    emb = embeddings.get_embedding("test")
-    assert isinstance(emb, np.ndarray)
-    assert len(emb.shape) == 1
-    assert emb.shape[0] == embeddings.get_embedding_dim()
-    
-    # Test batch embeddings
-    embs = embeddings.get_embeddings(terms)
-    assert isinstance(embs, dict)
-    assert all(isinstance(v, np.ndarray) for v in embs.values())
-    assert all(v.shape[0] == embeddings.get_embedding_dim() for v in embs.values())
-
-def test_similarity_search():
-    """Test finding similar terms."""
-    embeddings = WordEmbeddings()
-    terms = ["king", "queen", "prince", "princess", "duke", "duchess"]
-    embeddings.load_terms(terms)
-    
-    similar = embeddings.find_similar_terms("king", n=2)
-    assert len(similar) == 2
-    assert "king" not in similar  # Should not include the query term
-    assert all(isinstance(term, str) for term in similar)
-
-def test_numerological_values():
-    """Test numerological value calculation."""
-    embeddings = WordEmbeddings()
-    value = embeddings.calculate_numerological_value("test")
-    assert isinstance(value, int)
-    assert 0 <= value <= 21  # For Tarot-based numerology 
+if __name__ == "__main__":
+    pytest.main(["-n", "auto", "--dist=loadfile", __file__, "-v", "--tb=short"]) 

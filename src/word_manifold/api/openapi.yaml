@@ -1,0 +1,295 @@
+openapi: 3.0.3
+info:
+  title: Word Manifold API
+  description: |
+    API for semantic visualization and analysis, combining word embeddings
+    with sacred geometry and numerology.
+  version: 1.0.0
+  
+servers:
+  - url: http://localhost:5000
+    description: Local development server
+  - url: https://api.example.com
+    description: Production server
+
+paths:
+  /api/v1/embeddings/models:
+    get:
+      summary: List available embedding models
+      description: Get a list of available word embedding models
+      responses:
+        '200':
+          description: List of models
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  models:
+                    type: array
+                    items:
+                      type: string
+                    example: ["all-MiniLM-L6-v2", "en_core_web_lg"]
+
+  /api/v1/embeddings/embed:
+    post:
+      summary: Get embedding for text
+      description: Generate embedding vector for a single text
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:
+                  type: string
+                  description: Text to embed
+                model_name:
+                  type: string
+                  description: Model to use for embedding
+                normalize:
+                  type: boolean
+                  description: Whether to normalize the embedding
+                  default: true
+      responses:
+        '200':
+          description: Embedding vector
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  embedding:
+                    type: array
+                    items:
+                      type: number
+                  model_name:
+                    type: string
+                  dimensions:
+                    type: integer
+                  metadata:
+                    type: object
+
+  /api/v1/embeddings/embed_batch:
+    post:
+      summary: Get embeddings for multiple texts
+      description: Generate embedding vectors for multiple texts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                texts:
+                  type: array
+                  items:
+                    type: string
+                  description: Texts to embed
+                model_name:
+                  type: string
+                  description: Model to use for embedding
+                batch_size:
+                  type: integer
+                  description: Batch size for processing
+                  default: 32
+                normalize:
+                  type: boolean
+                  description: Whether to normalize embeddings
+                  default: true
+      responses:
+        '200':
+          description: Embedding vectors
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  embeddings:
+                    type: array
+                    items:
+                      type: array
+                      items:
+                        type: number
+                  model_name:
+                    type: string
+                  dimensions:
+                    type: integer
+                  metadata:
+                    type: object
+
+  /api/v1/embeddings/similarity:
+    post:
+      summary: Calculate similarity between texts
+      description: Calculate semantic similarity between two texts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text1:
+                  type: string
+                  description: First text
+                text2:
+                  type: string
+                  description: Second text
+                model_name:
+                  type: string
+                  description: Model to use for embedding
+                metric:
+                  type: string
+                  description: Similarity metric to use
+                  enum: [cosine, euclidean]
+                  default: cosine
+      responses:
+        '200':
+          description: Similarity score
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  similarity:
+                    type: number
+                    description: Similarity score between 0 and 1
+                  model_name:
+                    type: string
+                  metric:
+                    type: string
+                  metadata:
+                    type: object
+
+  /api/v1/visualizations/timeseries:
+    post:
+      summary: Create time series visualization
+      description: Generate visualization of term evolution over time
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                terms:
+                  type: array
+                  items:
+                    type: string
+                  description: Terms to analyze
+                timeframe:
+                  type: string
+                  description: Time range to analyze (e.g. 1h, 1d, 1w)
+                  default: "1d"
+                interval:
+                  type: string
+                  description: Sampling interval (e.g. 1m, 5m, 1h)
+                  default: "1h"
+                pattern_type:
+                  type: string
+                  description: Type of temporal pattern
+                  enum: [cyclic, linear, harmonic, spiral, wave]
+                  default: cyclic
+                interactive:
+                  type: boolean
+                  description: Whether to create interactive visualization
+                  default: false
+                show_values:
+                  type: boolean
+                  description: Whether to show numeric values
+                  default: true
+                show_connections:
+                  type: boolean
+                  description: Whether to show connections
+                  default: true
+                hexagram_data:
+                  type: object
+                  description: Optional I Ching data
+      responses:
+        '200':
+          description: Visualization data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  visualization:
+                    type: string
+                    description: Base64 encoded visualization data
+                  format:
+                    type: string
+                    enum: [png, html]
+                  insights:
+                    type: array
+                    items:
+                      type: string
+                  metadata:
+                    type: object
+
+  /api/v1/visualizations/magic:
+    post:
+      summary: Create magic structure visualization
+      description: Generate visualization of magic squares, cubes, or higher dimensions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dimension:
+                  type: integer
+                  description: Number of dimensions
+                  minimum: 2
+                  default: 2
+                size:
+                  type: integer
+                  description: Size in each dimension
+                  minimum: 3
+                  default: 3
+                terms:
+                  type: array
+                  items:
+                    type: string
+                  description: Optional terms for semantic weighting
+                interactive:
+                  type: boolean
+                  description: Whether to create interactive visualization
+                  default: false
+                show_values:
+                  type: boolean
+                  description: Whether to show numeric values
+                  default: true
+                show_connections:
+                  type: boolean
+                  description: Whether to show connections
+                  default: true
+                color_scheme:
+                  type: string
+                  description: Color scheme for visualization
+                  default: viridis
+      responses:
+        '200':
+          description: Visualization data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  visualization:
+                    type: string
+                    description: Base64 encoded visualization data
+                  format:
+                    type: string
+                    enum: [png, html]
+                  magic_constant:
+                    type: number
+                    description: Magic constant of the structure
+                  is_magic:
+                    type: boolean
+                    description: Whether the structure satisfies magic properties
+
+components:
+  schemas: {}
+  securitySchemes: {} 

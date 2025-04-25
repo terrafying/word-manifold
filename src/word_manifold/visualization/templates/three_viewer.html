@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Word Manifold - 3D Visualization</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: monospace;
+            font-size: 12px;
+            pointer-events: none;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-family: monospace;
+            font-size: 12px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="info"></div>
+    <div id="controls">
+        <div>
+            <label>Animation Speed:</label>
+            <input type="range" id="speed" min="10" max="500" value="100">
+        </div>
+        <div>
+            <button id="play">Play</button>
+            <button id="pause">Pause</button>
+            <button id="reset">Reset</button>
+        </div>
+    </div>
+    
+    <script type="module">
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+        import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+        
+        // Scene setup
+        const scene = new THREE.Scene();
+        const backgroundColor = "{{ background_color }}";
+        scene.background = new THREE.Color(backgroundColor);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5;
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        // Lighting
+        const ambientIntensity = parseFloat("{{ ambient_intensity }}");
+        const ambientLight = new THREE.AmbientLight(0xffffff, ambientIntensity);
+        scene.add(ambientLight);
+        
+        const directionalIntensity = parseFloat("{{ directional_intensity }}");
+        const directionalLight = new THREE.DirectionalLight(0xffffff, directionalIntensity);
+        directionalLight.position.set(1, 1, 1);
+        scene.add(directionalLight);
+        
+        // Controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        
+        // Shape rendering
+        let points = [];
+        let edges = [];
+        let pointMaterial;
+        let edgeMaterial;
+        let pointCloud;
+        let edgeLines;
+        
+        function createPoints(data) {
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(data.points.flat());
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
+            if (data.colors) {
+                const colors = new Float32Array(data.colors.flat());
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                pointMaterial = new THREE.PointsMaterial({ 
+                    size: 0.1,
+                    vertexColors: true
+                });
+            } else {
+                pointMaterial = new THREE.PointsMaterial({
+                    size: 0.1,
+                    color: 0xffffff
+                });
+            }
+            
+            if (data.sizes) {
+                const sizes = new Float32Array(data.sizes);
+                geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+            }
+            
+            pointCloud = new THREE.Points(geometry, pointMaterial);
+            scene.add(pointCloud);
+        }
+        
+        function createEdges(data) {
+            if (!data.edges) return;
+            
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(data.edges.flat());
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            
+            edgeMaterial = new THREE.LineBasicMaterial({
+                color: 0x888888,
+                opacity: 0.5,
+                transparent: true
+            });
+            
+            edgeLines = new THREE.LineSegments(geometry, edgeMaterial);
+            scene.add(edgeLines);
+        }
+        
+        function updateVisualization(data) {
+            // Remove existing objects
+            if (pointCloud) scene.remove(pointCloud);
+            if (edgeLines) scene.remove(edgeLines);
+            
+            // Create new visualization
+            createPoints(data);
+            createEdges(data);
+        }
+        
+        // Animation handling
+        let animationFrames = [];
+        let currentFrame = 0;
+        let isPlaying = false;
+        let frameDelay = 100;
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+            
+            if (isPlaying && animationFrames.length > 0) {
+                const now = Date.now();
+                if (now - lastFrameTime >= frameDelay) {
+                    updateVisualization(animationFrames[currentFrame]);
+                    currentFrame = (currentFrame + 1) % animationFrames.length;
+                    lastFrameTime = now;
+                }
+            }
+        }
+        
+        // Event handlers
+        let lastFrameTime = Date.now();
+        
+        document.getElementById('play').onclick = () => {
+            isPlaying = true;
+        };
+        
+        document.getElementById('pause').onclick = () => {
+            isPlaying = false;
+        };
+        
+        document.getElementById('reset').onclick = () => {
+            currentFrame = 0;
+            if (animationFrames.length > 0) {
+                updateVisualization(animationFrames[0]);
+            }
+        };
+        
+        document.getElementById('speed').oninput = (event) => {
+            frameDelay = parseInt(event.target.value);
+        };
+        
+        window.onresize = () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+        
+        // Data loading
+        async function loadData() {
+            // Load initial shape data
+            const shapeDataStr = "{{ shape_data | tojson | safe }}";
+            const shapeData = JSON.parse(shapeDataStr);
+            if (shapeData) {
+                updateVisualization(shapeData);
+            }
+            
+            // Load animation data if available
+            const response = await fetch('/animation');
+            const animData = await response.json();
+            if (animData && animData.frames) {
+                animationFrames = animData.frames;
+                frameDelay = animData.frame_delay;
+                document.getElementById('speed').value = frameDelay;
+            }
+        }
+        
+        // Start visualization
+        loadData();
+        animate();
+    </script>
+</body>
+</html> 
