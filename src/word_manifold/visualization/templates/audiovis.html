@@ -3,11 +3,19 @@
 <head>
     <title>Audio-Reactive ASCII Visualization</title>
     <style>
+        :root {
+            --bg-color: #000;
+            --text-color: #fff;
+            --accent-color: #0f0;
+            --control-bg: rgba(0, 0, 0, 0.8);
+            --border-color: #333;
+        }
+        
         body {
             margin: 0;
             padding: 0;
-            background-color: #000;
-            color: #fff;
+            background-color: var(--bg-color);
+            color: var(--text-color);
             font-family: monospace;
             overflow: hidden;
         }
@@ -26,34 +34,46 @@
             line-height: 1;
             white-space: pre;
             overflow: hidden;
+            transition: transform 0.3s ease;
+        }
+        
+        #visualization.high-res {
+            font-size: 4px;
         }
         
         #controls {
             position: fixed;
             top: 0;
             right: 0;
-            width: 250px;
-            background: rgba(0, 0, 0, 0.8);
+            width: 300px;
+            background: var(--control-bg);
             padding: 20px;
-            border-left: 1px solid #333;
+            border-left: 1px solid var(--border-color);
+            height: 100vh;
+            overflow-y: auto;
         }
         
         .control-group {
             margin-bottom: 20px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
         }
         
         .control-group h3 {
             margin: 0 0 10px 0;
-            color: #888;
+            color: var(--accent-color);
+            font-size: 14px;
         }
         
-        select, input[type="range"] {
+        select, input[type="range"], input[type="file"] {
             width: 100%;
             margin: 5px 0;
             background: #333;
-            color: #fff;
+            color: var(--text-color);
             border: 1px solid #555;
             padding: 5px;
+            border-radius: 3px;
         }
         
         input[type="range"] {
@@ -66,21 +86,48 @@
             -webkit-appearance: none;
             width: 15px;
             height: 15px;
-            background: #fff;
+            background: var(--accent-color);
             border-radius: 50%;
             cursor: pointer;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 8px;
+            background: #333;
+            color: var(--text-color);
+            border: 1px solid #555;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        button:hover {
+            background: #444;
+            border-color: var(--accent-color);
+        }
+        
+        button.active {
+            background: var(--accent-color);
+            color: var(--bg-color);
         }
         
         #metrics {
             position: fixed;
             bottom: 0;
             left: 0;
-            right: 250px;
-            background: rgba(0, 0, 0, 0.8);
+            right: 300px;
+            background: var(--control-bg);
             padding: 10px;
             display: flex;
             justify-content: space-around;
-            border-top: 1px solid #333;
+            border-top: 1px solid var(--border-color);
         }
         
         .metric {
@@ -89,7 +136,7 @@
         
         .metric-value {
             font-size: 1.2em;
-            color: #0f0;
+            color: var(--accent-color);
         }
         
         #spectrum {
@@ -97,17 +144,93 @@
             height: 100px;
             background: #111;
             margin-top: 10px;
-            border: 1px solid #333;
+            border: 1px solid var(--border-color);
+        }
+        
+        #waveform {
+            width: 100%;
+            height: 60px;
+            background: #111;
+            margin-top: 10px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .pattern-preview {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .pattern-option {
+            padding: 5px;
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s ease;
+        }
+        
+        .pattern-option:hover {
+            border-color: var(--accent-color);
+        }
+        
+        .pattern-option.active {
+            background: var(--accent-color);
+            color: var(--bg-color);
+        }
+        
+        #audio-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        #time-display {
+            font-family: monospace;
+            color: var(--accent-color);
+        }
+        
+        #zoom-controls {
+            position: fixed;
+            bottom: 60px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+            background: var(--control-bg);
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
         }
         
         @keyframes glow {
             0% { text-shadow: 0 0 5px #fff; }
-            50% { text-shadow: 0 0 20px #fff, 0 0 30px #0ff; }
+            50% { text-shadow: 0 0 20px #fff, 0 0 30px var(--accent-color); }
             100% { text-shadow: 0 0 5px #fff; }
         }
         
         .glow-text {
             animation: glow 2s ease-in-out infinite;
+        }
+        
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .tooltip:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 5px;
+            background: var(--control-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 3px;
+            white-space: nowrap;
+            z-index: 1000;
         }
     </style>
 </head>
@@ -117,12 +240,31 @@
         
         <div id="controls">
             <div class="control-group">
-                <h3>Pattern Style</h3>
-                <select id="patternStyle">
-                    <option value="wave">Wave</option>
-                    <option value="mandala">Mandala</option>
-                    <option value="field">Field</option>
+                <h3>Audio Source</h3>
+                <select id="audioSource">
+                    <option value="microphone">Microphone</option>
+                    <option value="file">Audio File</option>
                 </select>
+                <input type="file" id="audioFile" accept="audio/*" style="display: none;">
+                <div id="audio-controls" style="display: none;">
+                    <button id="playPause">Play</button>
+                    <span id="time-display">00:00 / 00:00</span>
+                </div>
+                <canvas id="waveform"></canvas>
+            </div>
+            
+            <div class="control-group">
+                <h3>Pattern Style</h3>
+                <div class="pattern-preview">
+                    <div class="pattern-option active" data-pattern="wave">Wave</div>
+                    <div class="pattern-option" data-pattern="mandala">Mandala</div>
+                    <div class="pattern-option" data-pattern="field">Field</div>
+                </div>
+                <div class="button-group">
+                    <button id="highRes" class="tooltip" data-tooltip="Toggle high resolution mode">HD</button>
+                    <button id="interference" class="tooltip" data-tooltip="Add interference patterns">Wave+</button>
+                    <button id="blend" class="tooltip" data-tooltip="Enable pattern blending">Blend</button>
+                </div>
             </div>
             
             <div class="control-group">
@@ -131,24 +273,46 @@
                     <option value="spectrum">Spectrum</option>
                     <option value="intensity">Intensity</option>
                     <option value="frequency">Frequency</option>
+                    <option value="rainbow">Rainbow</option>
+                    <option value="custom">Custom</option>
                 </select>
+                <input type="color" id="customColor" style="display: none;">
+            </div>
+            
+            <div class="control-group">
+                <h3>Pattern Settings</h3>
+                <label>Complexity:
+                    <input type="range" id="complexity" min="1" max="10" value="5">
+                </label>
+                <label>Density:
+                    <input type="range" id="density" min="1" max="100" value="50">
+                </label>
+                <label>Speed:
+                    <input type="range" id="speed" min="1" max="100" value="50">
+                </label>
             </div>
             
             <div class="control-group">
                 <h3>Visualization Size</h3>
-                <label>Width: <span id="widthValue">80</span></label>
-                <input type="range" id="width" min="40" max="160" value="80">
-                <label>Height: <span id="heightValue">40</span></label>
-                <input type="range" id="height" min="20" max="80" value="40">
+                <label>Width: <span id="widthValue">80</span>
+                    <input type="range" id="width" min="40" max="200" value="80">
+                </label>
+                <label>Height: <span id="heightValue">40</span>
+                    <input type="range" id="height" min="20" max="100" value="40">
+                </label>
             </div>
             
             <div class="control-group">
-                <h3>Font Size</h3>
-                <input type="range" id="fontSize" min="6" max="16" value="8">
+                <h3>Effects</h3>
+                <div class="button-group">
+                    <button id="glow" class="tooltip" data-tooltip="Add glow effect">Glow</button>
+                    <button id="pulse" class="tooltip" data-tooltip="Add pulse effect">Pulse</button>
+                    <button id="mirror" class="tooltip" data-tooltip="Mirror pattern">Mirror</button>
+                </div>
             </div>
             
             <div class="control-group">
-                <h3>Spectrum</h3>
+                <h3>Audio Analysis</h3>
                 <canvas id="spectrum"></canvas>
             </div>
         </div>
@@ -167,6 +331,12 @@
                 <div id="fpsValue" class="metric-value">0</div>
             </div>
         </div>
+        
+        <div id="zoom-controls">
+            <button id="zoomIn" class="tooltip" data-tooltip="Zoom in">+</button>
+            <button id="zoomOut" class="tooltip" data-tooltip="Zoom out">-</button>
+            <button id="resetZoom" class="tooltip" data-tooltip="Reset zoom">Reset</button>
+        </div>
     </div>
     
     <script>
@@ -176,66 +346,187 @@
         // UI elements
         const visualization = document.getElementById('visualization');
         const spectrum = document.getElementById('spectrum').getContext('2d');
-        const intensityValue = document.getElementById('intensityValue');
-        const frequencyValue = document.getElementById('frequencyValue');
-        const fpsValue = document.getElementById('fpsValue');
+        const waveform = document.getElementById('waveform').getContext('2d');
+        const audioSource = document.getElementById('audioSource');
+        const audioFile = document.getElementById('audioFile');
+        const audioControls = document.getElementById('audio-controls');
+        const playPause = document.getElementById('playPause');
+        const timeDisplay = document.getElementById('time-display');
+        
+        // Audio context and elements
+        let audioContext;
+        let audioElement;
+        let audioSourceNode;
+        let analyser;
+        let audioData;
         
         // Configuration
         let config = {
             width: 80,
             height: 40,
             pattern_style: 'wave',
-            color_mode: 'spectrum'
-        };
-        
-        // Performance monitoring
-        let lastFrameTime = performance.now();
-        let frameCount = 0;
-        
-        // WebSocket handlers
-        ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            
-            // Update visualization
-            visualization.textContent = data.pattern;
-            
-            // Update metrics
-            intensityValue.textContent = data.intensity.toFixed(2);
-            frequencyValue.textContent = `${Math.round(data.dominant_freq)} Hz`;
-            
-            // Update spectrum visualization
-            drawSpectrum(data.spectrum);
-            
-            // Update FPS
-            frameCount++;
-            const now = performance.now();
-            if (now - lastFrameTime >= 1000) {
-                fpsValue.textContent = frameCount;
-                frameCount = 0;
-                lastFrameTime = now;
+            color_mode: 'spectrum',
+            high_res: false,
+            interference: false,
+            blend: false,
+            complexity: 5,
+            density: 50,
+            speed: 50,
+            effects: {
+                glow: false,
+                pulse: false,
+                mirror: false
             }
         };
         
-        ws.onopen = () => {
-            console.log('Connected to visualization server');
-            sendConfig();
+        // Zoom state
+        let zoomLevel = 1;
+        
+        // Initialize audio context
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 2048;
+            audioData = new Uint8Array(analyser.frequencyBinCount);
+        }
+        
+        // Handle audio file selection
+        audioFile.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            if (!audioContext) initAudio();
+            
+            if (audioElement) {
+                audioElement.pause();
+                audioElement.src = '';
+            }
+            
+            audioElement = new Audio(URL.createObjectURL(file));
+            audioElement.loop = true;
+            
+            audioSourceNode = audioContext.createMediaElementSource(audioElement);
+            audioSourceNode.connect(analyser);
+            analyser.connect(audioContext.destination);
+            
+            audioControls.style.display = 'flex';
+            await updateWaveform(file);
         };
         
-        ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
+        // Handle audio source change
+        audioSource.onchange = (e) => {
+            const isFile = e.target.value === 'file';
+            audioFile.style.display = isFile ? 'block' : 'none';
+            audioControls.style.display = isFile ? 'flex' : 'none';
+            
+            if (!isFile) {
+                // Switch to microphone input
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => {
+                        if (!audioContext) initAudio();
+                        audioSourceNode = audioContext.createMediaStreamSource(stream);
+                        audioSourceNode.connect(analyser);
+                    })
+                    .catch(err => console.error('Error accessing microphone:', err));
+            }
         };
         
-        // UI event handlers
-        document.getElementById('patternStyle').onchange = (e) => {
-            config.pattern_style = e.target.value;
-            sendConfig();
+        // Play/Pause control
+        playPause.onclick = () => {
+            if (!audioElement) return;
+            
+            if (audioElement.paused) {
+                audioElement.play();
+                playPause.textContent = 'Pause';
+            } else {
+                audioElement.pause();
+                playPause.textContent = 'Play';
+            }
         };
         
+        // Update audio time display
+        function updateTimeDisplay() {
+            if (!audioElement) return;
+            
+            const formatTime = (time) => {
+                const minutes = Math.floor(time / 60);
+                const seconds = Math.floor(time % 60);
+                return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            };
+            
+            timeDisplay.textContent = `${formatTime(audioElement.currentTime)} / ${formatTime(audioElement.duration)}`;
+            requestAnimationFrame(updateTimeDisplay);
+        }
+        
+        // Draw waveform preview
+        async function updateWaveform(file) {
+            const audioBuffer = await file.arrayBuffer();
+            const buffer = await audioContext.decodeAudioData(audioBuffer);
+            const data = buffer.getChannelData(0);
+            const step = Math.ceil(data.length / waveform.canvas.width);
+            
+            waveform.clearRect(0, 0, waveform.canvas.width, waveform.canvas.height);
+            waveform.strokeStyle = '#0f0';
+            waveform.beginPath();
+            
+            for (let i = 0; i < waveform.canvas.width; i++) {
+                const idx = i * step;
+                const x = i;
+                const y = (data[idx] + 1) / 2 * waveform.canvas.height;
+                
+                if (i === 0) {
+                    waveform.moveTo(x, y);
+                } else {
+                    waveform.lineTo(x, y);
+                }
+            }
+            
+            waveform.stroke();
+        }
+        
+        // Pattern style selection
+        document.querySelectorAll('.pattern-option').forEach(option => {
+            option.onclick = (e) => {
+                document.querySelector('.pattern-option.active').classList.remove('active');
+                option.classList.add('active');
+                config.pattern_style = option.dataset.pattern;
+                sendConfig();
+            };
+        });
+        
+        // Effect toggles
+        ['highRes', 'interference', 'blend', 'glow', 'pulse', 'mirror'].forEach(effect => {
+            document.getElementById(effect).onclick = (e) => {
+                e.target.classList.toggle('active');
+                if (effect === 'highRes') {
+                    config.high_res = e.target.classList.contains('active');
+                    visualization.classList.toggle('high-res', config.high_res);
+                } else if (['interference', 'blend'].includes(effect)) {
+                    config[effect] = e.target.classList.contains('active');
+                } else {
+                    config.effects[effect] = e.target.classList.contains('active');
+                }
+                sendConfig();
+            };
+        });
+        
+        // Color mode handling
         document.getElementById('colorMode').onchange = (e) => {
             config.color_mode = e.target.value;
+            document.getElementById('customColor').style.display = 
+                e.target.value === 'custom' ? 'block' : 'none';
             sendConfig();
         };
         
+        // Pattern settings
+        ['complexity', 'density', 'speed'].forEach(setting => {
+            document.getElementById(setting).oninput = (e) => {
+                config[setting] = parseInt(e.target.value);
+                sendConfig();
+            };
+        });
+        
+        // Size controls
         document.getElementById('width').oninput = (e) => {
             config.width = parseInt(e.target.value);
             document.getElementById('widthValue').textContent = config.width;
@@ -248,8 +539,57 @@
             sendConfig();
         };
         
-        document.getElementById('fontSize').oninput = (e) => {
-            visualization.style.fontSize = `${e.target.value}px`;
+        // Zoom controls
+        document.getElementById('zoomIn').onclick = () => {
+            zoomLevel = Math.min(zoomLevel * 1.2, 3);
+            updateZoom();
+        };
+        
+        document.getElementById('zoomOut').onclick = () => {
+            zoomLevel = Math.max(zoomLevel / 1.2, 0.5);
+            updateZoom();
+        };
+        
+        document.getElementById('resetZoom').onclick = () => {
+            zoomLevel = 1;
+            updateZoom();
+        };
+        
+        function updateZoom() {
+            visualization.style.transform = `scale(${zoomLevel})`;
+        }
+        
+        // WebSocket handlers
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            
+            // Update visualization
+            visualization.innerHTML = data.pattern;
+            
+            // Update metrics
+            document.getElementById('intensityValue').textContent = data.intensity.toFixed(2);
+            document.getElementById('frequencyValue').textContent = `${Math.round(data.dominant_freq)} Hz`;
+            
+            // Update spectrum visualization
+            drawSpectrum(data.spectrum);
+            
+            // Update FPS counter
+            frameCount++;
+            const now = performance.now();
+            if (now - lastFrameTime >= 1000) {
+                document.getElementById('fpsValue').textContent = frameCount;
+                frameCount = 0;
+                lastFrameTime = now;
+            }
+        };
+        
+        ws.onopen = () => {
+            console.log('Connected to visualization server');
+            sendConfig();
+        };
+        
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
         };
         
         function sendConfig() {
@@ -282,15 +622,24 @@
             }
         }
         
+        // Performance monitoring
+        let frameCount = 0;
+        let lastFrameTime = performance.now();
+        
         // Handle window resize
         window.onresize = () => {
-            const canvas = document.getElementById('spectrum');
-            canvas.width = canvas.offsetWidth;
-            canvas.height = canvas.offsetHeight;
+            ['spectrum', 'waveform'].forEach(id => {
+                const canvas = document.getElementById(id);
+                canvas.width = canvas.offsetWidth;
+                canvas.height = canvas.offsetHeight;
+            });
         };
         
         // Initial setup
         window.onresize();
+        
+        // Start audio time display updates
+        updateTimeDisplay();
     </script>
 </body>
 </html> 

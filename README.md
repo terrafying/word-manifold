@@ -1,5 +1,10 @@
 # Word Manifold: Cellular Automata in Word Vector Space
 
+[![Tests](https://github.com/yourusername/word-manifold/actions/workflows/test.yml/badge.svg)](https://github.com/yourusername/word-manifold/actions/workflows/test.yml)
+[![Documentation](https://github.com/yourusername/word-manifold/actions/workflows/docs.yml/badge.svg)](https://yourusername.github.io/word-manifold/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 ## Overview
 
 Word Manifold explores the intersection of cellular automata, linguistic semantics, and occult symbolism. The project implements a novel system where regions of word embedding space evolve over time according to contrast-based evolutionary rules, creating dynamic semantic landscapes inspired by occult numerology and Crowleyan symbolism.
@@ -168,3 +173,137 @@ This project is in early development. Current progress:
 - Wolfram, S. (2002). A New Kind of Science.
 
 1. Load and manage word embeddings
+
+## Features
+
+### 🎵 Audio-Reactive Visualization
+
+Create mesmerizing ASCII art visualizations that react to audio in real-time:
+
+```bash
+# Start basic visualization with microphone input
+word-manifold audiovis
+
+# Use audio file with high-resolution patterns
+word-manifold audiovis --pattern mandala --high-res
+
+# Create complex field patterns with effects
+word-manifold audiovis --pattern field --complexity 8 --density 75
+```
+
+Features include:
+- Real-time audio analysis with beat detection
+- Multiple visualization patterns (wave, mandala, field)
+- High-resolution ASCII art with detailed patterns
+- Interactive controls and effects
+- Audio file playback support
+- WebSocket-based browser interface
+
+[Learn more about audio visualization →](docs/features/audiovis.md)
+
+### 🧠 Semantic Analysis
+
+Explore semantic relationships and generate visualizations based on word embeddings:
+
+```bash
+# Create semantic tree visualization
+word-manifold semantic-tree "consciousness expansion" --max-depth 4
+
+# Generate shape-based visualization
+word-manifold shapes "the nature of reality" --chunk-size 2
+```
+
+[Learn more about semantic analysis →](docs/features/semantic.md)
+
+### 🎨 ASCII Art Generation
+
+Create beautiful ASCII art patterns with various styles and effects:
+
+```bash
+# Generate mandala pattern
+word-manifold ascii mandala --style mystical --layers 5
+
+# Create animated wave pattern
+word-manifold ascii wave --animate --frames 60
+```
+
+[Learn more about ASCII art →](docs/features/ascii.md)
+
+## Installation
+
+```bash
+# Basic installation
+pip install word-manifold
+
+# Install with all optional dependencies
+pip install "word-manifold[all]"
+
+# Install specific features
+pip install "word-manifold[audio,docs]"
+```
+
+## Quick Start
+
+1. Install the package with audio support:
+```bash
+pip install "word-manifold[audio]"
+```
+
+2. Start the audio visualization:
+```bash
+word-manifold audiovis
+```
+
+3. Open your browser to view the visualization (automatically opened by default).
+
+4. Experiment with different patterns and settings:
+```bash
+# Try different patterns
+word-manifold audiovis --pattern mandala
+
+# Enable high-resolution mode
+word-manifold audiovis --high-res
+
+# Use audio file input
+word-manifold audiovis --audio music.mp3
+```
+
+## Documentation
+
+Full documentation is available at [https://yourusername.github.io/word-manifold/](https://yourusername.github.io/word-manifold/)
+
+- [Installation Guide](docs/getting-started/installation.md)
+- [Quick Start Guide](docs/getting-started/quickstart.md)
+- [API Reference](docs/api/)
+- [Examples](docs/examples/)
+- [Contributing Guide](docs/development/contributing.md)
+
+## Development
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/word-manifold.git
+cd word-manifold
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+.venv\Scripts\activate     # Windows
+
+# Install development dependencies
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Build documentation
+mkdocs serve
+```
+
+## Contributing
+
+Contributions are welcome! Please read our [Contributing Guide](docs/development/contributing.md) for details on how to submit pull requests, report issues, and contribute to the project.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

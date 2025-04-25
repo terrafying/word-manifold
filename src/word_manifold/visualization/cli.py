@@ -27,6 +27,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 import math
 import asyncio
+import colorsys
 
 # Configure matplotlib for non-interactive backend
 import matplotlib
@@ -1167,343 +1168,165 @@ def hexagrams(text: Optional[str], output_dir: str, casting_method: str):
         raise click.ClickException(str(e))
 
 @cli.command()
-@click.argument('pattern_type', type=click.Choice(['mandala', 'wave', 'field', 'blend']))
-@click.option('--width', default=80, help='Width of the pattern')
-@click.option('--height', default=40, help='Height of the pattern')
-@click.option('--radius', default=15, help='Radius for mandala patterns')
-@click.option('--complexity', default=2.0, help='Pattern complexity (higher = more intricate)')
-@click.option('--density', default=0.6, help='Pattern density (0.0 to 1.0)')
-@click.option('--style', type=click.Choice([
-    'mystical', 'geometric', 'natural', 'runic', 'mathematical',
-    'cyberpunk', 'ethereal', 'ancient', 'digital', 'cosmic', 'braille',
-    'rainbow_pulse', 'acid', 'plasma', 'fractal', 'quantum', 'neural', 'dream',
-    'spectrum', 'intensity', 'frequency'
-]), default='mystical', help='Visual style to use')
-@click.option('--field-type', type=click.Choice([
-    'organic', 'crystalline', 'flowing', 'chaotic'
-]), default='organic', help='Type of field pattern')
-@click.option('--wave-type', type=click.Choice([
-    'sine', 'square', 'triangle', 'sawtooth'
-]), default='sine', help='Type of wave pattern')
-@click.option('--layers', default=3, help='Number of mandala layers')
-@click.option('--symmetry', default=8, help='Number of mandala symmetry axes')
-@click.option('--interference/--no-interference', default=False, help='Add wave interference patterns')
-@click.option('--animate/--no-animate', default=False, help='Create animation')
-@click.option('--frames', default=60, help='Number of animation frames')
-@click.option('--frame-delay', default=0.05, help='Delay between animation frames')
-@click.option('--theme', type=click.Choice([
-    'none', 'fire', 'water', 'earth', 'air', 'cosmic', 'mystic',
-    'rainbow', 'sunset', 'forest', 'ocean', 'ethereal', 'void'
-]), default='none', help='Color theme to use')
-@click.option('--output-dir', default='visualizations/ascii', help='Output directory')
-@click.option('--blend-with', type=click.Choice(['none', 'mandala', 'wave', 'field']), default='none', help='Pattern to blend with')
-@click.option('--blend-mode', type=click.Choice([
-    'overlay', 'add', 'multiply', 'screen', 'difference'
-]), default='overlay', help='Blend mode to use')
-@click.option('--blend-alpha', default=0.7, help='Blend opacity (0.0 to 1.0)')
-@click.option('--blend-width', default=None, type=int, help='Width for blended pattern')
-@click.option('--blend-height', default=None, type=int, help='Height for blended pattern')
-@click.option('--output-format', type=click.Choice(['text', 'png', 'gif']), default='text', help='Output format')
-@click.option('--image-scale', default=1.0, help='Scale factor for image output')
-@click.option('--image-glow/--no-image-glow', default=True, help='Add glow effect to image')
-@click.option('--image-blur/--no-image-blur', default=True, help='Add blur effect to image')
-@click.option('--image-enhance/--no-image-enhance', default=True, help='Enhance image contrast/brightness')
-@click.option('--background-color', default=None, help='Background color in hex format (e.g. #000000)')
-@click.option('--effect', type=click.Choice([
-    'fractals', 'neural', 'quantum', 'flow_field', 'reaction_diffusion'
-]), multiple=True, help='Add visual effects (can specify multiple)')
+@click.option('--pattern', type=click.Choice(['wave', 'mandala', 'field']), default='mandala', help='Base pattern style')
+@click.option('--duration', default=10.0, help='Video duration in seconds')
+@click.option('--fps', default=30, help='Frames per second')
+@click.option('--width', default=1024, help='Output video width')
+@click.option('--height', default=1024, help='Output video height')
+@click.option('--style-prompt', default=None, help='Custom style prompt for synthesis')
+@click.option('--model-id', default=None, help='Custom Stable Diffusion model ID')
+@click.option('--upscaler-id', default=None, help='Custom upscaler model ID')
+@click.option('--strength', default=0.7, help='Synthesis strength (0-1)')
+@click.option('--steps', default=30, help='Number of inference steps')
+@click.option('--guidance-scale', default=7.5, help='Guidance scale for synthesis')
 @click.option('--audio', type=click.Path(exists=True), help='Audio file for reactive effects')
-@click.option('--audio-intensity', default=1.0, help='Intensity of audio reactive effects (0.0 to 2.0)')
-@click.option('--message', help='Subliminal message to embed')
-@click.option('--symbol', type=click.Choice([
-    'protection', 'wisdom', 'power', 'harmony', 'transformation',
-    'unity', 'transcendence', 'infinity', 'consciousness', 'enlightenment'
-]), multiple=True, help='Symbols to embed (can specify multiple)')
-@click.option('--sigil', type=click.Choice([
-    'focus', 'clarity', 'energy', 'peace', 'growth'
-]), multiple=True, help='Sigils to embed (can specify multiple)')
-def ascii(
-    pattern_type: str,
+@click.option('--output', default='output.mp4', help='Output video path')
+@click.option('--device', default=None, help='Device to use (cuda/cpu)')
+@click.option('--interpolate/--no-interpolate', default=True, help='Enable frame interpolation')
+def synthesize(
+    pattern: str,
+    duration: float,
+    fps: int,
     width: int,
     height: int,
-    radius: int,
-    complexity: float,
-    density: float,
-    style: str,
-    field_type: str,
-    wave_type: str,
-    layers: int,
-    symmetry: int,
-    interference: bool,
-    animate: bool,
-    frames: int,
-    frame_delay: float,
-    theme: str,
-    output_dir: str,
-    blend_with: str,
-    blend_mode: str,
-    blend_alpha: float,
-    blend_width: Optional[int],
-    blend_height: Optional[int],
-    output_format: str,
-    image_scale: float,
-    image_glow: bool,
-    image_blur: bool,
-    image_enhance: bool,
-    background_color: Optional[str],
-    effect: Tuple[str, ...],
-    audio: Optional[str],
-    audio_intensity: float,
-    message: Optional[str],
-    symbol: Tuple[str, ...],
-    sigil: Tuple[str, ...]
+    style_prompt: Optional[str],
+    model_id: Optional[str],
+    upscaler_id: Optional[str],
+    strength: float,
+    steps: int,
+    guidance_scale: float,
+    audio: Optional[Path],
+    output: str,
+    device: Optional[str],
+    interpolate: bool
 ):
-    """Generate rich ASCII art patterns and animations with audio reactivity and subliminal effects.
+    """Generate high-quality video from ASCII patterns using image synthesis.
     
-    Examples:
+    This command takes ASCII patterns and enhances them using Stable Diffusion
+    to create high-quality video with smooth transitions and optional
+    audio reactivity.
+    
+    Example usage:
     \b
-    # Create an audio-reactive mandala that pulses with the beat
-    word-manifold ascii mandala --style spectrum --output-format gif --audio music.mp3
+    # Basic mandala animation
+    word-manifold synthesize --pattern mandala --duration 10
     
-    # Generate a mystical pattern with embedded sigils and symbols
-    word-manifold ascii field --style mystical --sigil focus --sigil energy --symbol wisdom
+    \b
+    # Audio-reactive visualization with custom style
+    word-manifold synthesize --pattern wave --audio music.mp3 \\
+        --style-prompt "cosmic energy waves, vibrant colors"
     
-    # Create a quantum pattern with subliminal message
-    word-manifold ascii wave --style quantum --message "expand consciousness" --effect quantum
-    
-    # Make an intense audio-reactive animation with multiple effects
-    word-manifold ascii mandala --style acid --audio trance.mp3 --audio-intensity 2.0 \\
-        --effect fractals --effect flow_field --symbol enlightenment --symbol transcendence
+    \b
+    # High-quality animation with custom models
+    word-manifold synthesize --pattern field \\
+        --model-id "stabilityai/stable-diffusion-xl-base-1.0" \\
+        --upscaler-id "stabilityai/stable-diffusion-x4-upscaler" \\
+        --width 1920 --height 1080 --fps 60
     """
     try:
-        # Initialize components
-        engine = get_ascii_engine().ASCIIEngine()
-        ascii_renderer = get_ascii_renderer().ASCIIRenderer()
+        # Import required modules
+        from .renderers.synthesis_renderer import SynthesisRenderer
+        from .audiovis_viewer import AudioVisualizer, AudioConfig, VisualizerConfig
         
-        # Initialize image renderer if needed
-        image_renderer = None
-        if output_format in ['png', 'gif']:
-            from word_manifold.visualization.renderers.image_renderer import ImageRenderer
-            image_renderer = ImageRenderer(font_size=20)
-        
-        # Create output directory
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-        
-        # Generate primary pattern
-        if pattern_type == 'mandala':
-            pattern = engine.generate_mandala(
-                radius=radius,
-                complexity=complexity,
-                style=style,
-                layers=layers,
-                symmetry=symmetry
-            )
-        elif pattern_type == 'wave':
-            pattern = engine.generate_field(
-                width=width,
-                height=height,
-                density=density,
-                style=style,
-                pattern_type='flowing'
-            )
-            engine.add_wave_pattern(
-                pattern,
-                frequency=0.1,
-                phase=0,
-                wave_type=wave_type,
-                interference=interference
-            )
-            if interference:
-                engine.add_wave_pattern(
-                    pattern,
-                    frequency=0.15,
-                    phase=math.pi/3,
-                    wave_type=wave_type,
-                    interference=True
-                )
-        elif pattern_type == 'field':
-            pattern = engine.generate_field(
-                width=width,
-                height=height,
-                density=density,
-                style=style,
-                pattern_type=field_type
-            )
-        
-        # Handle blending if requested
-        if blend_with != 'none':
-            # Create blend pattern
-            if blend_with == 'mandala':
-                blend_pattern = engine.generate_mandala(
-                    radius=min(width, height) // 4,
-                    complexity=complexity,
-                    style=style,
-                    layers=layers,
-                    symmetry=symmetry
-                )
-            elif blend_with == 'wave':
-                blend_pattern = engine.generate_field(
-                    width=width,
-                    height=height,
-                    density=density,
-                    style=style,
-                    pattern_type='flowing'
-                )
-                engine.add_wave_pattern(
-                    blend_pattern,
-                    frequency=0.15,
-                    phase=math.pi/3,
-                    wave_type=wave_type,
-                    interference=interference
-                )
-            else:  # field
-                blend_pattern = engine.generate_field(
-                    width=width,
-                    height=height,
-                    density=density,
-                    style=style,
-                    pattern_type=field_type
-                )
-            
-            # Determine blend dimensions
-            blend_width = blend_width or max(pattern.width, blend_pattern.width)
-            blend_height = blend_height or max(pattern.height, blend_pattern.height)
-            
-            # Resize patterns if needed
-            if pattern.width != blend_width or pattern.height != blend_height:
-                pattern = engine.resize_pattern(pattern, blend_width, blend_height)
-            if blend_pattern.width != blend_width or blend_pattern.height != blend_height:
-                blend_pattern = engine.resize_pattern(blend_pattern, blend_width, blend_height)
-            
-            # Blend patterns
-            pattern = engine.blend_patterns(
-                pattern,
-                blend_pattern,
-                alpha=blend_alpha,
-                blend_mode=blend_mode
-            )
-        
-        # Handle output format
-        if output_format == 'text':
-            # Save ASCII text
-            static_path = output_path / f"{pattern_type}_{style}.txt"
-            ascii_renderer.save_pattern(
-                pattern,
-                static_path,
-                include_metadata=True
-            )
-            logger.info(f"Saved ASCII pattern to {static_path}")
-            
-            if animate:
-                frames_path = output_path / f"{pattern_type}_{style}_animation.txt"
-                animation_frames = engine.create_animation_frames(pattern, n_frames=frames)
-                ascii_renderer.save_animation(animation_frames, frames_path)
-                logger.info(f"Saved ASCII animation to {frames_path}")
+        # Set up audio processing if needed
+        audio_features = None
+        if audio:
+            try:
+                import librosa
+                # Load and analyze audio
+                y, sr = librosa.load(str(audio))
+                # Extract features at regular intervals
+                hop_length = int(sr / fps)
+                onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=hop_length)
+                tempo, beats = librosa.beat.beat_track(onset_envelope=onset_env, sr=sr, hop_length=hop_length)
+                spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr, hop_length=hop_length)[0]
                 
-                # Display animation in terminal if supported
-                if ascii_renderer.supports_color and theme != 'none':
-                    logger.info("\nDisplaying animation (Ctrl+C to stop)...")
-                    ascii_renderer.render_animation(
-                        animation_frames,
-                        frame_delay=frame_delay,
-                        theme=theme,
-                        loop=True
-                    )
-            
-            # Display static pattern in terminal if theme requested
-            elif theme != 'none' and ascii_renderer.supports_color:
-                logger.info("\nDisplaying pattern:")
-                ascii_renderer.render_pattern(pattern, theme=theme)
-                
-        else:  # png or gif
-            # Convert background color if provided
-            bg_color = None
-            if background_color:
-                bg_color = tuple(int(background_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-            
-            if animate and output_format == 'gif':
-                # Create and save animated GIF
-                animation_frames = engine.create_animation_frames(pattern, n_frames=frames)
-                gif_path = output_path / f"{pattern_type}_{style}.gif"
-                
-                # Prepare render parameters
-                render_params = {
-                    'style': style,
-                    'scale': image_scale,
-                    'duration': int(frame_delay * 1000),
-                    'glow': image_glow,
-                    'blur': image_blur,
-                    'enhance': image_enhance,
-                }
-                
-                # Add effects if specified
-                if effect:
-                    render_params['psychedelic_effects'] = list(effect)
-                
-                # Add audio reactivity if specified
-                if audio:
-                    render_params.update({
-                        'audio_file': audio,
-                        'audio_intensity': audio_intensity
+                # Create feature dictionaries for each frame
+                total_frames = int(duration * fps)
+                audio_features = []
+                for i in range(total_frames):
+                    frame_idx = min(i, len(onset_env) - 1)
+                    audio_features.append({
+                        'is_beat': frame_idx in beats,
+                        'onset_strength': float(onset_env[frame_idx]),
+                        'spectral_centroid': float(spectral_centroid[frame_idx] / sr),
+                        'tempo': float(tempo)
                     })
-                
-                # Add subliminal effects if specified
-                if message:
-                    render_params['subliminal_message'] = message
-                if symbol:
-                    render_params['subliminal_symbols'] = list(symbol)
-                if sigil:
-                    render_params['subliminal_sigils'] = list(sigil)
-                
-                image_renderer.save_animation(
-                    animation_frames,
-                    str(gif_path),
-                    **render_params
-                )
-                logger.info(f"Saved animated GIF to {gif_path}")
-            else:
-                # Create and save static image
-                img_path = output_path / f"{pattern_type}_{style}.png"
-                
-                # Prepare render parameters
-                render_params = {
-                    'style': style,
-                    'scale': image_scale,
-                    'glow': image_glow,
-                    'blur': image_blur,
-                    'enhance': image_enhance,
-                    'background_color': bg_color,
-                }
-                
-                # Add effects if specified
-                if effect:
-                    render_params['psychedelic_effects'] = list(effect)
-                
-                # Add audio reactivity if specified
-                if audio:
-                    render_params.update({
-                        'audio_file': audio,
-                        'audio_intensity': audio_intensity
-                    })
-                
-                # Add subliminal effects if specified
-                if message:
-                    render_params['subliminal_message'] = message
-                if symbol:
-                    render_params['subliminal_symbols'] = list(symbol)
-                if sigil:
-                    render_params['subliminal_sigils'] = list(sigil)
-                
-                image_renderer.save_pattern(
-                    pattern,
-                    str(img_path),
-                    **render_params
-                )
-                logger.info(f"Saved image to {img_path}")
+            except ImportError:
+                logger.warning("librosa not found. Audio reactivity disabled.")
+                audio_features = None
+        
+        # Initialize pattern generator
+        vis_config = VisualizerConfig(
+            width=80,  # Use lower resolution for ASCII generation
+            height=40,
+            pattern_style=pattern,
+            high_res=True
+        )
+        
+        visualizer = AudioVisualizer(vis_config=vis_config)
+        
+        # Initialize synthesis renderer
+        renderer = SynthesisRenderer(
+            device=device,
+            model_id=model_id,
+            upscaler_id=upscaler_id,
+            output_size=(width, height),
+            fps=fps,
+            style_prompt=style_prompt,
+            guidance_scale=guidance_scale,
+            num_inference_steps=steps,
+            strength=strength
+        )
+        
+        try:
+            # Generate patterns
+            total_frames = int(duration * fps)
+            patterns = []
+            colors = []
             
+            logger.info("Generating ASCII patterns...")
+            for i in range(total_frames):
+                # Update phase for animation
+                visualizer.phase = (i / total_frames) * 2 * np.pi
+                
+                # Generate frame
+                frame = visualizer._generate_frame()
+                patterns.append(frame)
+                
+                # Get color based on audio if available
+                if audio_features:
+                    features = audio_features[i]
+                    if features['is_beat']:
+                        colors.append('#ffffff')  # Bright flash on beats
+                    else:
+                        # Color based on spectral centroid
+                        hue = features['spectral_centroid']
+                        rgb = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+                        colors.append(f"#{int(rgb[0]*255):02x}{int(rgb[1]*255):02x}{int(rgb[2]*255):02x}")
+                else:
+                    colors.append(None)
+            
+            # Render video
+            logger.info("Rendering video with synthesis...")
+            renderer.render_video(
+                patterns=patterns,
+                colors=colors,
+                audio_features=audio_features,
+                output_path=output
+            )
+            
+            logger.info(f"Video saved to {output}")
+            
+        finally:
+            renderer.cleanup()
+            
+    except ImportError as e:
+        logger.error(f"Required package not found: {e}")
+        logger.error("Please install with: pip install 'word-manifold[synthesis]'")
+        raise click.ClickException(str(e))
     except Exception as e:
-        logger.error("Error generating visualization", exc_info=e)
+        logger.error("Error in video synthesis", exc_info=e)
         raise click.ClickException(str(e))
 
 @cli.command()
@@ -1513,12 +1336,20 @@ def ascii(
 @click.option('--height', default=40, help='Visualization height')
 @click.option('--fps', default=30, help='Target frames per second')
 @click.option('--pattern', type=click.Choice(['wave', 'mandala', 'field']), default='wave', help='Initial pattern style')
-@click.option('--color-mode', type=click.Choice(['spectrum', 'intensity', 'frequency']), default='spectrum', help='Initial color mode')
+@click.option('--color-mode', type=click.Choice(['spectrum', 'intensity', 'frequency', 'rainbow', 'custom']), default='spectrum', help='Initial color mode')
 @click.option('--sample-rate', default=44100, help='Audio sample rate')
 @click.option('--block-size', default=2048, help='Audio block size')
 @click.option('--device', type=int, help='Audio input device ID')
 @click.option('--browser/--no-browser', default=True, help='Open browser automatically')
 @click.option('--template', type=click.Path(exists=True), help='Custom visualization template')
+@click.option('--high-res/--no-high-res', default=False, help='Enable high resolution mode')
+@click.option('--complexity', default=5, type=int, help='Pattern complexity (1-10)')
+@click.option('--density', default=50, type=int, help='Pattern density (1-100)')
+@click.option('--speed', default=50, type=int, help='Animation speed (1-100)')
+@click.option('--effect', type=click.Choice(['mirror', 'pulse', 'glow']), multiple=True, help='Enable visual effects')
+@click.option('--list-devices', is_flag=True, help='List available audio devices')
+@click.option('--audio', type=click.Path(exists=True), help='Audio file for playback')
+@click.option('--debug', is_flag=True, help='Enable debug logging')
 def audiovis(
     host: str,
     port: int,
@@ -1531,7 +1362,15 @@ def audiovis(
     block_size: int,
     device: int,
     browser: bool,
-    template: Optional[Path]
+    template: Optional[Path],
+    high_res: bool,
+    complexity: int,
+    density: int,
+    speed: int,
+    effect: Tuple[str, ...],
+    list_devices: bool,
+    audio: Optional[Path],
+    debug: bool
 ):
     """Launch audio-reactive ASCII visualization.
     
@@ -1556,10 +1395,31 @@ def audiovis(
     word-manifold audiovis --device 1 --pattern mandala --fps 60
     
     \b
+    # Enable effects
+    word-manifold audiovis --effect mirror --effect glow
+    
+    \b
     # Use custom visualization template
     word-manifold audiovis --template my_template.html
     """
     try:
+        # Set debug logging if requested
+        if debug:
+            logger.setLevel(logging.DEBUG)
+            logging.getLogger('word_manifold').setLevel(logging.DEBUG)
+        
+        # List audio devices if requested
+        if list_devices:
+            try:
+                import sounddevice as sd
+                print("\nAvailable audio devices:")
+                print(sd.query_devices())
+                return
+            except ImportError:
+                raise click.ClickException(
+                    "sounddevice not found. Please install with: pip install sounddevice"
+                )
+        
         # Check for sounddevice dependency
         try:
             import sounddevice as sd
@@ -1575,7 +1435,8 @@ def audiovis(
         audio_config = AudioConfig(
             sample_rate=sample_rate,
             block_size=block_size,
-            device=device
+            device=device,
+            channels=1  # Use mono for visualization
         )
         
         vis_config = VisualizerConfig(
@@ -1583,7 +1444,16 @@ def audiovis(
             height=height,
             fps=fps,
             pattern_style=pattern,
-            color_mode=color_mode
+            color_mode=color_mode,
+            high_res=high_res,
+            complexity=complexity,
+            density=density,
+            speed=speed,
+            effects={
+                'mirror': 'mirror' in effect,
+                'pulse': 'pulse' in effect,
+                'glow': 'glow' in effect
+            }
         )
         
         # Create visualizer
@@ -1592,6 +1462,10 @@ def audiovis(
             audio_config=audio_config,
             vis_config=vis_config
         )
+        
+        # Set audio file if provided
+        if audio:
+            visualizer.set_audio_file(str(audio))
         
         # Start visualization in background thread
         vis_thread = threading.Thread(target=visualizer.start)
@@ -1602,12 +1476,21 @@ def audiovis(
         if template:
             template_path = Path(template)
         else:
+            # Look for template in package directory first
             template_dir = Path(__file__).parent / 'templates'
             template_path = template_dir / 'audiovis.html'
+            
+            # If not found, try src directory structure
+            if not template_path.exists():
+                template_dir = Path(__file__).parent.parent / 'visualization' / 'templates'
+                template_path = template_dir / 'audiovis.html'
         
         if not template_path.exists():
-            logger.error(f"Template not found: {template_path}")
-            return
+            logger.error(f"Template not found at: {template_path}")
+            logger.error("Searched directories:")
+            logger.error(f"  - {Path(__file__).parent / 'templates'}")
+            logger.error(f"  - {Path(__file__).parent.parent / 'visualization' / 'templates'}")
+            raise click.ClickException("Could not find visualization template")
             
         # Create HTTP server for serving template
         from aiohttp import web
@@ -1615,60 +1498,83 @@ def audiovis(
         
         async def serve_template(request):
             return web.FileResponse(template_path)
-            
+        
         async def run_server():
-            app = web.Application()
-            app.router.add_get('/', serve_template)
+            # Find available port if specified port is in use
+            current_port = port
+            while current_port < port + 10:  # Try up to 10 ports
+                try:
+                    app = web.Application()
+                    app.router.add_get('/', serve_template)
+                    
+                    # Configure CORS
+                    cors = aiohttp_cors.setup(app, defaults={
+                        "*": aiohttp_cors.ResourceOptions(
+                            allow_credentials=True,
+                            expose_headers="*",
+                            allow_headers="*"
+                        )
+                    })
+                    
+                    for route in list(app.router.routes()):
+                        cors.add(route)
+                    
+                    # Start server
+                    server_url = f'http://{host}:{current_port}'
+                    ws_url = f'ws://{host}:{current_port}'
+                    
+                    logger.info(f"Starting visualization server at {server_url}")
+                    logger.info(f"WebSocket endpoint: {ws_url}")
+                    
+                    if browser:
+                        # Open browser after short delay
+                        def open_browser():
+                            time.sleep(1.5)  # Wait for server to start
+                            webbrowser.open(server_url)
+                        
+                        browser_thread = threading.Thread(target=open_browser)
+                        browser_thread.daemon = True
+                        browser_thread.start()
+                    
+                    # Run server
+                    runner = web.AppRunner(app)
+                    await runner.setup()
+                    site = web.TCPSite(runner, host, current_port)
+                    await site.start()
+                    
+                    try:
+                        # Start WebSocket server
+                        await visualizer.start_server(host=host, port=current_port)
+                        
+                        # Run forever
+                        await asyncio.Future()
+                    except Exception as e:
+                        logger.error(f"Error in WebSocket server: {e}")
+                        raise
+                    finally:
+                        await runner.cleanup()
+                        visualizer.stop()
+                    
+                except OSError as e:
+                    if e.errno == 48:  # Address already in use
+                        current_port += 1
+                        logger.warning(f"Port {current_port-1} in use, trying {current_port}")
+                        continue
+                    raise
+                except Exception as e:
+                    logger.error(f"Server error: {e}")
+                    raise click.ClickException(f"Server error: {str(e)}")
             
-            # Configure CORS
-            cors = aiohttp_cors.setup(app, defaults={
-                "*": aiohttp_cors.ResourceOptions(
-                    allow_credentials=True,
-                    expose_headers="*",
-                    allow_headers="*"
-                )
-            })
-            
-            for route in list(app.router.routes()):
-                cors.add(route)
-            
-            # Start server
-            server_url = f'http://{host}:{port}'
-            ws_url = f'ws://{host}:{port}'
-            
-            logger.info(f"Starting visualization server at {server_url}")
-            logger.info(f"WebSocket endpoint: {ws_url}")
-            
-            if browser:
-                # Open browser after short delay
-                def open_browser():
-                    time.sleep(1.5)  # Wait for server to start
-                    webbrowser.open(server_url)
-                
-                browser_thread = threading.Thread(target=open_browser)
-                browser_thread.daemon = True
-                browser_thread.start()
-            
-            # Run server
-            runner = web.AppRunner(app)
-            await runner.setup()
-            site = web.TCPSite(runner, host, port)
-            await site.start()
-            
-            # Start WebSocket server
-            await visualizer.start_server(host=host, port=port)
-            
-            try:
-                # Run forever
-                await asyncio.Future()
-            except KeyboardInterrupt:
-                logger.info("Stopping visualization server...")
-            finally:
-                visualizer.stop()
-                await runner.cleanup()
+            raise click.ClickException(f"Could not find available port in range {port}-{current_port-1}")
         
         # Run the async server
-        asyncio.run(run_server())
+        try:
+            asyncio.run(run_server())
+        except KeyboardInterrupt:
+            logger.info("Shutting down server...")
+        except Exception as e:
+            logger.error("Fatal error:", exc_info=True)
+            raise click.ClickException(str(e))
             
     except Exception as e:
         logger.error(f"Error starting visualization: {e}", exc_info=True)
