@@ -3150,6 +3150,38 @@
         "documentation": {}
     },
     {
+        "label": "Optional",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Dict",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "Any",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
+        "label": "List",
+        "importPath": "typing",
+        "description": "typing",
+        "isExtraImport": true,
+        "detail": "typing",
+        "documentation": {}
+    },
+    {
         "label": "Any",
         "importPath": "typing",
         "description": "typing",
@@ -4318,6 +4350,14 @@
         "documentation": {}
     },
     {
+        "label": "dataclass",
+        "importPath": "dataclasses",
+        "description": "dataclasses",
+        "isExtraImport": true,
+        "detail": "dataclasses",
+        "documentation": {}
+    },
+    {
         "label": "euclidean_distances",
         "importPath": "sklearn.metrics.pairwise",
         "description": "sklearn.metrics.pairwise",
@@ -4764,6 +4804,22 @@
         "description": "time",
         "isExtraImport": true,
         "detail": "time",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
+        "documentation": {}
+    },
+    {
+        "label": "Path",
+        "importPath": "pathlib",
+        "description": "pathlib",
+        "isExtraImport": true,
+        "detail": "pathlib",
         "documentation": {}
     },
     {
@@ -9016,6 +9072,32 @@
         "documentation": {}
     },
     {
+        "label": "sounddevice",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "sounddevice",
+        "description": "sounddevice",
+        "detail": "sounddevice",
+        "documentation": {}
+    },
+    {
+        "label": "websockets",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "websockets",
+        "description": "websockets",
+        "detail": "websockets",
+        "documentation": {}
+    },
+    {
+        "label": "fft",
+        "importPath": "scipy.fft",
+        "description": "scipy.fft",
+        "isExtraImport": true,
+        "detail": "scipy.fft",
+        "documentation": {}
+    },
+    {
         "label": "Figure",
         "importPath": "matplotlib.figure",
         "description": "matplotlib.figure",
@@ -12957,6 +13039,24 @@
         "documentation": {}
     },
     {
+        "label": "audiovis",
+        "kind": 2,
+        "importPath": "src.word_manifold.visualization.cli.commands.audiovis",
+        "description": "src.word_manifold.visualization.cli.commands.audiovis",
+        "peekOfCode": "def audiovis(\n    host: str,\n    port: int,\n    width: int,\n    height: int,\n    fps: int,\n    pattern: str,\n    color_mode: str,\n    sample_rate: int,\n    block_size: int,",
+        "detail": "src.word_manifold.visualization.cli.commands.audiovis",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.word_manifold.visualization.cli.commands.audiovis",
+        "description": "src.word_manifold.visualization.cli.commands.audiovis",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n@click.command()\n@click.option('--host', default='localhost', help='Server host')\n@click.option('--port', default=8765, help='Server port')\n@click.option('--width', default=80, help='Visualization width')\n@click.option('--height', default=40, help='Visualization height')\n@click.option('--fps', default=30, help='Target frames per second')\n@click.option('--pattern', type=click.Choice(['wave', 'mandala', 'field']), default='wave', help='Initial pattern style')\n@click.option('--color-mode', type=click.Choice(['spectrum', 'intensity', 'frequency']), default='spectrum', help='Initial color mode')\n@click.option('--sample-rate', default=44100, help='Audio sample rate')",
+        "detail": "src.word_manifold.visualization.cli.commands.audiovis",
+        "documentation": {}
+    },
+    {
         "label": "ASCIIEngine",
         "kind": 6,
         "importPath": "src.word_manifold.visualization.engines.ascii",
@@ -13326,6 +13426,42 @@
         "documentation": {}
     },
     {
+        "label": "AudioConfig",
+        "kind": 6,
+        "importPath": "src.word_manifold.visualization.audiovis_viewer",
+        "description": "src.word_manifold.visualization.audiovis_viewer",
+        "peekOfCode": "class AudioConfig:\n    \"\"\"Audio configuration settings.\"\"\"\n    sample_rate: int = 44100\n    block_size: int = 2048\n    channels: int = 1\n    device: Optional[int] = None\n@dataclass\nclass VisualizerConfig:\n    \"\"\"Visualizer configuration settings.\"\"\"\n    width: int = 80",
+        "detail": "src.word_manifold.visualization.audiovis_viewer",
+        "documentation": {}
+    },
+    {
+        "label": "VisualizerConfig",
+        "kind": 6,
+        "importPath": "src.word_manifold.visualization.audiovis_viewer",
+        "description": "src.word_manifold.visualization.audiovis_viewer",
+        "peekOfCode": "class VisualizerConfig:\n    \"\"\"Visualizer configuration settings.\"\"\"\n    width: int = 80\n    height: int = 40\n    fps: int = 30\n    color_mode: str = \"spectrum\"  # spectrum, intensity, frequency\n    pattern_style: str = \"wave\"   # wave, mandala, field\nclass AudioVisualizer:\n    \"\"\"Real-time audio-reactive ASCII visualizer.\"\"\"\n    def __init__(",
+        "detail": "src.word_manifold.visualization.audiovis_viewer",
+        "documentation": {}
+    },
+    {
+        "label": "AudioVisualizer",
+        "kind": 6,
+        "importPath": "src.word_manifold.visualization.audiovis_viewer",
+        "description": "src.word_manifold.visualization.audiovis_viewer",
+        "peekOfCode": "class AudioVisualizer:\n    \"\"\"Real-time audio-reactive ASCII visualizer.\"\"\"\n    def __init__(\n        self,\n        audio_config: Optional[AudioConfig] = None,\n        vis_config: Optional[VisualizerConfig] = None\n    ):\n        \"\"\"Initialize the visualizer.\"\"\"\n        self.audio_config = audio_config or AudioConfig()\n        self.vis_config = vis_config or VisualizerConfig()",
+        "detail": "src.word_manifold.visualization.audiovis_viewer",
+        "documentation": {}
+    },
+    {
+        "label": "logger",
+        "kind": 5,
+        "importPath": "src.word_manifold.visualization.audiovis_viewer",
+        "description": "src.word_manifold.visualization.audiovis_viewer",
+        "peekOfCode": "logger = logging.getLogger(__name__)\n@dataclass\nclass AudioConfig:\n    \"\"\"Audio configuration settings.\"\"\"\n    sample_rate: int = 44100\n    block_size: int = 2048\n    channels: int = 1\n    device: Optional[int] = None\n@dataclass\nclass VisualizerConfig:",
+        "detail": "src.word_manifold.visualization.audiovis_viewer",
+        "documentation": {}
+    },
+    {
         "label": "VisualizationData",
         "kind": 6,
         "importPath": "src.word_manifold.visualization.base",
@@ -13569,6 +13705,15 @@
         "documentation": {}
     },
     {
+        "label": "audiovis",
+        "kind": 2,
+        "importPath": "src.word_manifold.visualization.cli",
+        "description": "src.word_manifold.visualization.cli",
+        "peekOfCode": "def audiovis(\n    host: str,\n    port: int,\n    width: int,\n    height: int,\n    fps: int,\n    pattern: str,\n    color_mode: str,\n    sample_rate: int,\n    block_size: int,",
+        "detail": "src.word_manifold.visualization.cli",
+        "documentation": {}
+    },
+    {
         "label": "logger",
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
@@ -13618,7 +13763,7 @@
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
         "description": "src.word_manifold.visualization.cli",
-        "peekOfCode": "get_symbolic_vis = lazy_import('word_manifold.visualization.symbolic_visualizer')\nget_semantic_tree = lazy_import('word_manifold.visualization.semantic_tree_visualizer')\nget_manifold_vis = lazy_import('word_manifold.visualization.manifold_vis')\nget_interactive_vis = lazy_import('word_manifold.visualization.interactive')\nget_cellular_rules = lazy_import('word_manifold.automata.cellular_rules')\nget_server = lazy_import('word_manifold.visualization.server')\nget_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\n# Progress bar support (lightweight)",
+        "peekOfCode": "get_symbolic_vis = lazy_import('word_manifold.visualization.symbolic_visualizer')\nget_semantic_tree = lazy_import('word_manifold.visualization.semantic_tree_visualizer')\nget_manifold_vis = lazy_import('word_manifold.visualization.manifold_vis')\nget_interactive_vis = lazy_import('word_manifold.visualization.interactive')\nget_cellular_rules = lazy_import('word_manifold.automata.cellular_rules')\nget_server = lazy_import('word_manifold.visualization.server')\nget_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\nget_audiovis = lazy_import('word_manifold.visualization.audiovis_viewer')",
         "detail": "src.word_manifold.visualization.cli",
         "documentation": {}
     },
@@ -13627,7 +13772,7 @@
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
         "description": "src.word_manifold.visualization.cli",
-        "peekOfCode": "get_semantic_tree = lazy_import('word_manifold.visualization.semantic_tree_visualizer')\nget_manifold_vis = lazy_import('word_manifold.visualization.manifold_vis')\nget_interactive_vis = lazy_import('word_manifold.visualization.interactive')\nget_cellular_rules = lazy_import('word_manifold.automata.cellular_rules')\nget_server = lazy_import('word_manifold.visualization.server')\nget_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\n# Progress bar support (lightweight)\ntry:",
+        "peekOfCode": "get_semantic_tree = lazy_import('word_manifold.visualization.semantic_tree_visualizer')\nget_manifold_vis = lazy_import('word_manifold.visualization.manifold_vis')\nget_interactive_vis = lazy_import('word_manifold.visualization.interactive')\nget_cellular_rules = lazy_import('word_manifold.automata.cellular_rules')\nget_server = lazy_import('word_manifold.visualization.server')\nget_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\nget_audiovis = lazy_import('word_manifold.visualization.audiovis_viewer')\n# Progress bar support (lightweight)",
         "detail": "src.word_manifold.visualization.cli",
         "documentation": {}
     },
@@ -13636,7 +13781,7 @@
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
         "description": "src.word_manifold.visualization.cli",
-        "peekOfCode": "get_manifold_vis = lazy_import('word_manifold.visualization.manifold_vis')\nget_interactive_vis = lazy_import('word_manifold.visualization.interactive')\nget_cellular_rules = lazy_import('word_manifold.automata.cellular_rules')\nget_server = lazy_import('word_manifold.visualization.server')\nget_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm",
+        "peekOfCode": "get_manifold_vis = lazy_import('word_manifold.visualization.manifold_vis')\nget_interactive_vis = lazy_import('word_manifold.visualization.interactive')\nget_cellular_rules = lazy_import('word_manifold.automata.cellular_rules')\nget_server = lazy_import('word_manifold.visualization.server')\nget_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\nget_audiovis = lazy_import('word_manifold.visualization.audiovis_viewer')\n# Progress bar support (lightweight)\ntry:",
         "detail": "src.word_manifold.visualization.cli",
         "documentation": {}
     },
@@ -13645,7 +13790,7 @@
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
         "description": "src.word_manifold.visualization.cli",
-        "peekOfCode": "get_interactive_vis = lazy_import('word_manifold.visualization.interactive')\nget_cellular_rules = lazy_import('word_manifold.automata.cellular_rules')\nget_server = lazy_import('word_manifold.visualization.server')\nget_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm\nexcept ImportError:",
+        "peekOfCode": "get_interactive_vis = lazy_import('word_manifold.visualization.interactive')\nget_cellular_rules = lazy_import('word_manifold.automata.cellular_rules')\nget_server = lazy_import('word_manifold.visualization.server')\nget_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\nget_audiovis = lazy_import('word_manifold.visualization.audiovis_viewer')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm",
         "detail": "src.word_manifold.visualization.cli",
         "documentation": {}
     },
@@ -13654,7 +13799,7 @@
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
         "description": "src.word_manifold.visualization.cli",
-        "peekOfCode": "get_cellular_rules = lazy_import('word_manifold.automata.cellular_rules')\nget_server = lazy_import('word_manifold.visualization.server')\nget_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm\nexcept ImportError:\n    # Fallback progress bar if tqdm not available",
+        "peekOfCode": "get_cellular_rules = lazy_import('word_manifold.automata.cellular_rules')\nget_server = lazy_import('word_manifold.visualization.server')\nget_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\nget_audiovis = lazy_import('word_manifold.visualization.audiovis_viewer')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm\nexcept ImportError:",
         "detail": "src.word_manifold.visualization.cli",
         "documentation": {}
     },
@@ -13663,7 +13808,7 @@
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
         "description": "src.word_manifold.visualization.cli",
-        "peekOfCode": "get_server = lazy_import('word_manifold.visualization.server')\nget_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm\nexcept ImportError:\n    # Fallback progress bar if tqdm not available\n    class tqdm:",
+        "peekOfCode": "get_server = lazy_import('word_manifold.visualization.server')\nget_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\nget_audiovis = lazy_import('word_manifold.visualization.audiovis_viewer')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm\nexcept ImportError:\n    # Fallback progress bar if tqdm not available",
         "detail": "src.word_manifold.visualization.cli",
         "documentation": {}
     },
@@ -13672,7 +13817,7 @@
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
         "description": "src.word_manifold.visualization.cli",
-        "peekOfCode": "get_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm\nexcept ImportError:\n    # Fallback progress bar if tqdm not available\n    class tqdm:\n        def __init__(self, *args, **kwargs):",
+        "peekOfCode": "get_remote_server = lazy_import('word_manifold.visualization.remote_server')\nget_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\nget_audiovis = lazy_import('word_manifold.visualization.audiovis_viewer')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm\nexcept ImportError:\n    # Fallback progress bar if tqdm not available\n    class tqdm:",
         "detail": "src.word_manifold.visualization.cli",
         "documentation": {}
     },
@@ -13681,7 +13826,7 @@
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
         "description": "src.word_manifold.visualization.cli",
-        "peekOfCode": "get_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm\nexcept ImportError:\n    # Fallback progress bar if tqdm not available\n    class tqdm:\n        def __init__(self, *args, **kwargs):\n            pass",
+        "peekOfCode": "get_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')\nget_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\nget_audiovis = lazy_import('word_manifold.visualization.audiovis_viewer')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm\nexcept ImportError:\n    # Fallback progress bar if tqdm not available\n    class tqdm:\n        def __init__(self, *args, **kwargs):",
         "detail": "src.word_manifold.visualization.cli",
         "documentation": {}
     },
@@ -13690,7 +13835,16 @@
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
         "description": "src.word_manifold.visualization.cli",
-        "peekOfCode": "get_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm\nexcept ImportError:\n    # Fallback progress bar if tqdm not available\n    class tqdm:\n        def __init__(self, *args, **kwargs):\n            pass\n        def __enter__(self):",
+        "peekOfCode": "get_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')\nget_audiovis = lazy_import('word_manifold.visualization.audiovis_viewer')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm\nexcept ImportError:\n    # Fallback progress bar if tqdm not available\n    class tqdm:\n        def __init__(self, *args, **kwargs):\n            pass",
+        "detail": "src.word_manifold.visualization.cli",
+        "documentation": {}
+    },
+    {
+        "label": "get_audiovis",
+        "kind": 5,
+        "importPath": "src.word_manifold.visualization.cli",
+        "description": "src.word_manifold.visualization.cli",
+        "peekOfCode": "get_audiovis = lazy_import('word_manifold.visualization.audiovis_viewer')\n# Progress bar support (lightweight)\ntry:\n    from tqdm import tqdm\nexcept ImportError:\n    # Fallback progress bar if tqdm not available\n    class tqdm:\n        def __init__(self, *args, **kwargs):\n            pass\n        def __enter__(self):",
         "detail": "src.word_manifold.visualization.cli",
         "documentation": {}
     },
@@ -13699,7 +13853,7 @@
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
         "description": "src.word_manifold.visualization.cli",
-        "peekOfCode": "DEFAULT_HOST = 'localhost'\nDEFAULT_PORT = 5000\nDEFAULT_TIMEOUTS = {\n    'server': 15,      # Default server request timeout\n    'health': 5,       # Health check timeout\n    'shutdown': 10,    # Graceful shutdown timeout\n    'startup': 30,     # Server startup timeout\n    'process': 5,      # Process operation timeout\n}\nSERVER_URL = f'http://{DEFAULT_HOST}:{DEFAULT_PORT}'",
+        "peekOfCode": "DEFAULT_HOST = 'localhost'\nDEFAULT_PORT = 5000\nDEFAULT_TIMEOUTS = {\n    'server': 15,      # Default server request timeout\n    'health': 5,       # Health check timeout\n    'shutdown': 10,    # Graceful shutdown timeout\n    'startup': 30,     # Server startup timeout\n    'process': 5,      # Process operation timeout\n    'websocket': 60,   # WebSocket connection timeout\n}",
         "detail": "src.word_manifold.visualization.cli",
         "documentation": {}
     },
@@ -13708,7 +13862,7 @@
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
         "description": "src.word_manifold.visualization.cli",
-        "peekOfCode": "DEFAULT_PORT = 5000\nDEFAULT_TIMEOUTS = {\n    'server': 15,      # Default server request timeout\n    'health': 5,       # Health check timeout\n    'shutdown': 10,    # Graceful shutdown timeout\n    'startup': 30,     # Server startup timeout\n    'process': 5,      # Process operation timeout\n}\nSERVER_URL = f'http://{DEFAULT_HOST}:{DEFAULT_PORT}'\n# Default configuration",
+        "peekOfCode": "DEFAULT_PORT = 5000\nDEFAULT_TIMEOUTS = {\n    'server': 15,      # Default server request timeout\n    'health': 5,       # Health check timeout\n    'shutdown': 10,    # Graceful shutdown timeout\n    'startup': 30,     # Server startup timeout\n    'process': 5,      # Process operation timeout\n    'websocket': 60,   # WebSocket connection timeout\n}\nSERVER_URL = f'http://{DEFAULT_HOST}:{DEFAULT_PORT}'",
         "detail": "src.word_manifold.visualization.cli",
         "documentation": {}
     },
@@ -13717,7 +13871,7 @@
         "kind": 5,
         "importPath": "src.word_manifold.visualization.cli",
         "description": "src.word_manifold.visualization.cli",
-        "peekOfCode": "DEFAULT_TIMEOUTS = {\n    'server': 15,      # Default server request timeout\n    'health': 5,       # Health check timeout\n    'shutdown': 10,    # Graceful shutdown timeout\n    'startup': 30,     # Server startup timeout\n    'process': 5,      # Process operation timeout\n}\nSERVER_URL = f'http://{DEFAULT_HOST}:{DEFAULT_PORT}'\n# Default configuration\nDEFAULT_CONFIG = {",
+        "peekOfCode": "DEFAULT_TIMEOUTS = {\n    'server': 15,      # Default server request timeout\n    'health': 5,       # Health check timeout\n    'shutdown': 10,    # Graceful shutdown timeout\n    'startup': 30,     # Server startup timeout\n    'process': 5,      # Process operation timeout\n    'websocket': 60,   # WebSocket connection timeout\n}\nSERVER_URL = f'http://{DEFAULT_HOST}:{DEFAULT_PORT}'\n# Default configuration",
         "detail": "src.word_manifold.visualization.cli",
         "documentation": {}
     },
