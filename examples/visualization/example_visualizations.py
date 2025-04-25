@@ -201,6 +201,7 @@ def semantic_shape_example(result: VisualizationResult):
         except Exception as e:
             logger.error("Error creating comparative visualization", exc_info=e)
             
+            
     except Exception as e:
         logger.error("Error in semantic shape example", exc_info=e)
 

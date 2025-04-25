@@ -1,282 +1,207 @@
-"""Visualization server for handling visualization requests."""
+"""
+Visualization Server.
 
-from flask import Flask, request, jsonify
+This module provides a Flask server for vector operations, rendering engine functionality,
+and data processing for visualizations. It maintains a vector database for efficient
+term operations and provides endpoints for visualization generation.
+"""
+
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
+import logging
 import numpy as np
+from typing import Dict, Any, List, Optional
+import json
+from datetime import datetime, timedelta
 from pathlib import Path
 import tempfile
-import base64
-import io
-import logging
-import traceback
-from typing import Dict, Any, List
-import os
+import ray
+from functools import wraps
+import time
 
-from .manifold_vis import ManifoldVisualizer
-from .interactive import InteractiveManifoldVisualizer
-from ..embeddings.word_embeddings import WordEmbeddings
+from word_manifold.embeddings.word_embeddings import WordEmbeddings
+from word_manifold.visualization.engines.timeseries import TimeSeriesEngine, PatternType
+from word_manifold.visualization.renderers.timeseries import TimeSeriesRenderer
+from word_manifold.manifold.vector_manifold import VectorManifold
+from word_manifold.discovery.service_registry import ServiceRegistry
+from word_manifold.core.worker_pool import WorkerPool
+from word_manifold.monitoring.metrics import MetricsCollector, MetricsExporter
+from word_manifold.cloud.ray_cloud import RayCloudManager
 
 # Configure logging
-logging.basicConfig(level=logging.INFO,
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
-
-# Security headers
-@app.after_request
-def add_security_headers(response):
-    """Add security headers to all responses."""
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-    return response
-
-_embeddings = None
-_visualizers: Dict[str, Any] = {}
-
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Health check endpoint."""
-    return jsonify({'status': 'healthy'})
-
-def get_embeddings(model_name: str = 'sentence-transformers/all-MiniLM-L6-v2') -> WordEmbeddings:
-    """Get or create embeddings instance."""
-    global _embeddings
-    if _embeddings is None:
+class VisualizationServer:
+    """Manages the visualization server with Ray integration."""
+    
+    def __init__(
+        self,
+        host: str = 'localhost',
+        port: int = 5000,
+        num_workers: int = 4,
+        ray_address: Optional[str] = None,
+        use_cloud: bool = False,
+        config_path: Optional[str] = None
+    ):
+        self.host = host
+        self.port = port
+        self.use_cloud = use_cloud
+        
+        # Initialize Ray and cloud services
+        if use_cloud:
+            self.cloud_manager = RayCloudManager(config_path=config_path)
+            self.cloud_manager.setup_cloud_cluster()
+        else:
+            # Initialize Ray locally if needed
+            if not ray.is_initialized():
+                ray.init(address=ray_address)
+                logger.info(f"Connected to Ray cluster at {ray_address}" if ray_address else "Initialized Ray locally")
+        
+        # Initialize metrics collection
+        self.metrics_collector = MetricsCollector.remote()
+        self.metrics_exporter = MetricsExporter.remote(self.metrics_collector)
+        
+        # Start metrics export in background
+        ray.get(self.metrics_exporter.start.remote())
+        
+        # Initialize service registry
+        self.registry = ServiceRegistry.remote()
+        
+        # Initialize worker pool
+        self.worker_pool = WorkerPool(num_workers)
+        
+        # Initialize Flask app
+        self.app = Flask(__name__)
+        CORS(self.app)
+        
+        # Initialize embeddings with default terms
+        self.embeddings = WordEmbeddings(load_default_terms=True)
+        logger.info(f"Loaded {len(self.embeddings.get_terms())} default terms")
+        
+        # Initialize manifold
+        self.vector_manifold = VectorManifold(self.embeddings)
+        
+        # Initialize core components
+        self.timeseries_engine = TimeSeriesEngine(self.embeddings)
+        
+        # Vector database cache
+        self.vector_cache: Dict[str, np.ndarray] = {}
+        self.last_update: Dict[str, datetime] = {}
+        self.CACHE_DURATION = timedelta(hours=1)
+        
+        # Register routes
+        self._register_routes()
+        
+        # Configure autoscaling if using cloud
+        if use_cloud:
+            self.cloud_manager.setup_autoscaling(self.metrics_collector)
+        
+    def _register_routes(self):
+        """Register Flask routes with Ray worker handling and metrics."""
+        
+        def with_metrics(f):
+            """Decorator to record request metrics."""
+            @wraps(f)
+            async def wrapped(*args, **kwargs):
+                start_time = time.time()
+                try:
+                    result = await f(*args, **kwargs)
+                    duration = time.time() - start_time
+                    ray.get(self.metrics_collector.record_request.remote(duration))
+                    return result
+                except Exception as e:
+                    duration = time.time() - start_time
+                    ray.get(self.metrics_collector.record_request.remote(duration, error=True))
+                    raise
+            return wrapped
+        
+        def with_worker(f):
+            """Decorator to handle requests with Ray workers."""
+            @wraps(f)
+            @with_metrics
+            async def wrapped(*args, **kwargs):
+                worker = await self.worker_pool.get_available_worker()
+                if worker is None:
+                    return jsonify({'error': 'No workers available'}), 503
+                return await ray.get(worker.process_visualization.remote(request.json))
+            return wrapped
+        
+        @self.app.route('/health')
+        def health_check():
+            """Health check endpoint."""
+            return jsonify({'status': 'healthy'})
+        
+        @self.app.route('/metrics')
+        async def metrics():
+            """Get server metrics."""
+            metrics_summary = await ray.get(self.metrics_collector.get_metrics_summary.remote())
+            return jsonify(metrics_summary)
+        
+        # Add visualization endpoints with metrics and worker handling
+        @self.app.route('/api/v1/visualize', methods=['POST'])
+        @with_worker
+        async def visualize():
+            """Handle visualization request."""
+            return await self._handle_visualization(request.json)
+    
+    async def _handle_visualization(self, data: Dict[str, Any]):
+        """Process visualization request with metrics tracking."""
         try:
-            logger.info(f"Initializing embeddings with model {model_name}")
-            _embeddings = WordEmbeddings(model_name=model_name)
+            # Update worker metrics
+            workers = len(self.worker_pool.workers)
+            loads = await ray.get([w.is_busy.remote() for w in self.worker_pool.workers])
+            avg_load = sum(loads) / max(1, len(loads)) * 100
+            
+            ray.get(self.metrics_collector.update_worker_metrics.remote(workers, avg_load))
+            ray.get(self.metrics_collector.update_cache_metrics.remote(len(self.vector_cache)))
+            
+            # Process visualization
+            # ... visualization logic here ...
+            
+            return jsonify({'status': 'success'})
+            
         except Exception as e:
-            logger.error(f"Error initializing embeddings: {str(e)}\n{traceback.format_exc()}")
+            logger.error(f"Error processing visualization: {e}")
+            return jsonify({'error': str(e)}), 500
+    
+    def start(self):
+        """Start the visualization server."""
+        try:
+            # Register service with Bonjour
+            ray.get(self.registry.register_service.remote(
+                'visualization_server',
+                self.port,
+                {'version': '1.0'}
+            ))
+            
+            # Start Flask server
+            self.app.run(host=self.host, port=self.port)
+            
+        except Exception as e:
+            logger.error(f"Failed to start server: {e}")
             raise
-    return _embeddings
+        finally:
+            # Cleanup on shutdown
+            if ray.is_initialized():
+                ray.get(self.metrics_exporter.stop.remote())
+                ray.get(self.registry.shutdown.remote())
+                if self.use_cloud:
+                    self.cloud_manager.shutdown()
+                ray.shutdown()
 
-@app.route('/api/visualize/static', methods=['POST'])
-def create_static_visualization():
-    """Create static manifold visualization."""
-    try:
-        data = request.json
-        terms = data.get('terms', [])
-        model = data.get('model', 'sentence-transformers/all-MiniLM-L6-v2')
-        dimensions = data.get('dimensions', 2)
-        
-        logger.info(f"Creating static visualization for terms: {terms}")
-        
-        # Get embeddings
-        embeddings = get_embeddings(model)
-        
-        # Process terms
-        term_embeddings = []
-        term_lists = []
-        
-        for term in terms:
-            logger.info(f"Getting embedding for term: {term}")
-            embedding = embeddings.get_embedding(term)
-            if embedding is not None:
-                term_embeddings.append(embedding)
-                term_lists.append([term])
-            else:
-                logger.warning(f"No embedding found for term: {term}")
-                
-        if not term_embeddings:
-            logger.error("No valid embeddings found for any terms")
-            return jsonify({'error': 'No valid embeddings found for terms'}), 400
-            
-        # Create visualization
-        logger.info("Creating ManifoldVisualizer")
-        visualizer = ManifoldVisualizer(
-            embeddings=np.array(term_embeddings),
-            terms=term_lists,
-            n_components=dimensions
-        )
-        
-        # Generate visualization
-        logger.info("Preparing visualization data")
-        data = visualizer.prepare_data()
-        logger.info("Plotting visualization")
-        fig = visualizer.plot(data)
-        
-        # Save to buffer
-        logger.info("Saving visualization to buffer")
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png', dpi=300, bbox_inches='tight')
-        buf.seek(0)
-        
-        # Convert to base64
-        img_base64 = base64.b64encode(buf.getvalue()).decode()
-        
-        logger.info("Visualization created successfully")
-        return jsonify({
-            'image': img_base64,
-            'type': 'png',
-            'dimensions': dimensions
-        })
-        
-    except Exception as e:
-        error_msg = f"Error creating static visualization: {str(e)}\n{traceback.format_exc()}"
-        logger.error(error_msg)
-        return jsonify({'error': error_msg}), 500
-
-@app.route('/api/visualize/interactive/create', methods=['POST'])
-def create_interactive_visualization():
-    """Create interactive visualization session."""
-    try:
-        data = request.json
-        terms = data.get('terms', [])
-        model = data.get('model', 'sentence-transformers/all-MiniLM-L6-v2')
-        dimensions = data.get('dimensions', 2)
-        
-        logger.info(f"Creating interactive visualization for terms: {terms}")
-        
-        # Get embeddings
-        embeddings = get_embeddings(model)
-        
-        # Process terms
-        term_embeddings = []
-        term_lists = []
-        
-        for term in terms:
-            logger.info(f"Getting embedding for term: {term}")
-            embedding = embeddings.get_embedding(term)
-            if embedding is not None:
-                term_embeddings.append(embedding)
-                term_lists.append([term])
-            else:
-                logger.warning(f"No embedding found for term: {term}")
-                
-        if not term_embeddings:
-            logger.error("No valid embeddings found for any terms")
-            return jsonify({'error': 'No valid embeddings found for terms'}), 400
-            
-        # Create visualization
-        logger.info("Creating interactive visualization")
-        session_id = base64.urlsafe_b64encode(os.urandom(16)).decode()
-        visualizer = InteractiveManifoldVisualizer(
-            embeddings=np.array(term_embeddings),
-            terms=term_lists
-        )
-        
-        # Store visualizer
-        _visualizers[session_id] = visualizer
-        
-        # Generate initial visualization
-        logger.info("Preparing visualization data")
-        data = visualizer.prepare_data()
-        logger.info("Plotting visualization")
-        fig = visualizer.plot(data)
-        
-        # Save initial state to buffer
-        logger.info("Saving visualization to buffer")
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png', dpi=300, bbox_inches='tight')
-        buf.seek(0)
-        
-        # Convert to base64
-        img_base64 = base64.b64encode(buf.getvalue()).decode()
-        
-        logger.info("Interactive visualization created successfully")
-        return jsonify({
-            'session_id': session_id,
-            'image': img_base64,
-            'type': 'png',
-            'dimensions': dimensions,
-            'state': visualizer.get_state()
-        })
-        
-    except Exception as e:
-        error_msg = f"Error creating interactive visualization: {str(e)}\n{traceback.format_exc()}"
-        logger.error(error_msg)
-        return jsonify({'error': error_msg}), 500
-
-@app.route('/api/visualize/interactive/update', methods=['POST'])
-def update_interactive_visualization():
-    """Update interactive visualization state."""
-    try:
-        data = request.json
-        session_id = data.get('session_id')
-        state = data.get('state', {})
-        
-        logger.info(f"Updating visualization for session: {session_id}")
-        
-        if session_id not in _visualizers:
-            logger.error(f"Invalid session ID: {session_id}")
-            return jsonify({'error': 'Invalid session ID'}), 404
-            
-        visualizer = _visualizers[session_id]
-        
-        # Update visualization state
-        logger.info(f"Updating state: {state}")
-        for key, value in state.items():
-            if key in visualizer.controls:
-                visualizer.controls[key].set_val(value)
-        
-        # Update visualization
-        logger.info("Updating visualization")
-        visualizer.update()
-        
-        # Get updated image
-        logger.info("Saving updated visualization")
-        buf = io.BytesIO()
-        visualizer._figure.savefig(buf, format='png', dpi=300, bbox_inches='tight')
-        buf.seek(0)
-        
-        # Convert to base64
-        img_base64 = base64.b64encode(buf.getvalue()).decode()
-        
-        logger.info("Visualization updated successfully")
-        return jsonify({
-            'image': img_base64,
-            'type': 'png',
-            'state': visualizer.get_state()
-        })
-        
-    except Exception as e:
-        error_msg = f"Error updating visualization: {str(e)}\n{traceback.format_exc()}"
-        logger.error(error_msg)
-        return jsonify({'error': error_msg}), 500
-
-@app.route('/api/visualize/interactive/close', methods=['POST'])
-def close_interactive_visualization():
-    """Close interactive visualization session."""
-    try:
-        data = request.json
-        session_id = data.get('session_id')
-        
-        logger.info(f"Closing visualization session: {session_id}")
-        
-        if session_id in _visualizers:
-            visualizer = _visualizers[session_id]
-            visualizer.close()
-            del _visualizers[session_id]
-            
-        logger.info("Session closed successfully")
-        return jsonify({'status': 'success'})
-        
-    except Exception as e:
-        error_msg = f"Error closing visualization: {str(e)}\n{traceback.format_exc()}"
-        logger.error(error_msg)
-        return jsonify({'error': error_msg}), 500
-
-def run_server(host: str = 'localhost', port: int = 5000, debug: bool = False):
-    """Run the visualization server.
-    
-    Args:
-        host: Host address to bind to
-        port: Port to listen on
-        debug: Whether to run in debug mode
-    """
-    logger.info(f"Starting visualization server on {host}:{port} (debug={debug})")
-    
-    if debug:
-        # Enable more detailed Flask logging
-        logging.getLogger('flask').setLevel(logging.DEBUG)
-        # Enable Werkzeug debugger
-        os.environ['FLASK_ENV'] = 'development'
-        os.environ['FLASK_DEBUG'] = '1'
-        
-    app.run(host=host, port=port, debug=debug)
-
-if __name__ == '__main__':
-    run_server() 
+def run_server(
+    host: str = 'localhost',
+    port: int = 5000,
+    debug: bool = False,
+    use_cloud: bool = False,
+    config_path: Optional[str] = None
+):
+    """Run the visualization server."""
+    server = VisualizationServer(
+        host=host,
+        port=port,
+        use_cloud=use_cloud,
+        config_path=config_path
+    )
+    server.start() 

@@ -12,7 +12,10 @@ import requests
 import threading
 import webbrowser
 import time
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 import json
 from typing import Optional, List, Dict, Any, Callable, Tuple
 import numpy as np
@@ -22,6 +25,7 @@ from functools import wraps
 import yaml
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
+import math
 
 # Configure matplotlib for non-interactive backend
 import matplotlib
@@ -56,6 +60,8 @@ get_interactive_vis = lazy_import('word_manifold.visualization.interactive')
 get_cellular_rules = lazy_import('word_manifold.automata.cellular_rules')
 get_server = lazy_import('word_manifold.visualization.server')
 get_remote_server = lazy_import('word_manifold.visualization.remote_server')
+get_ascii_engine = lazy_import('word_manifold.visualization.engines.ascii')
+get_ascii_renderer = lazy_import('word_manifold.visualization.renderers.ascii')
 
 # Progress bar support (lightweight)
 try:
@@ -149,13 +155,21 @@ def validate_server_config(config: Dict) -> Tuple[bool, List[str]]:
 
 def get_server_process(port: int) -> Optional['psutil.Process']:
     """Find server process by port."""
-    for proc in psutil.process_iter(['pid', 'name']):
-        try:
-            for conn in proc.net_connections(kind='inet'):
-                if conn.laddr.port == port and conn.status == 'LISTEN':
-                    return proc
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.Error):
-            continue
+    if psutil is None:
+        logger.warning("psutil not available, cannot detect server process")
+        return None
+        
+    try:
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                for conn in proc.net_connections(kind='inet'):
+                    if conn.laddr.port == port and conn.status == 'LISTEN':
+                        return proc
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.Error):
+                continue
+    except Exception as e:
+        logger.warning(f"Error checking server process: {e}")
+        return None
     return None
 
 def load_config(config_path: Optional[Path] = None) -> Dict:
@@ -306,6 +320,13 @@ def start(host: str, port: int, remote: bool, workers: int, daemon: bool, debug:
             logging.getLogger('word_manifold').setLevel(logging.DEBUG)
             logging.getLogger('flask').setLevel(logging.DEBUG)
         
+        # Check if server is already running
+        if psutil is not None:
+            existing_proc = get_server_process(port)
+            if existing_proc:
+                logger.info(f"Server already running on port {port} (PID: {existing_proc.pid})")
+                return
+        
         # Import server modules only when needed
         try:
             if remote:
@@ -323,7 +344,8 @@ def start(host: str, port: int, remote: bool, workers: int, daemon: bool, debug:
             raise click.ClickException(f"Server modules not found. Please install with 'pip install word-manifold[server]': {e}")
             
     except Exception as e:
-        raise click.ClickException(f"Failed to start server: {str(e)}") from e
+        logger.error("Failed to start server", exc_info=e)
+        raise click.ClickException(f"Failed to start server: {str(e)}")
 
 @server.command()
 @click.option('--host', default=DEFAULT_HOST, help='Server host address')
@@ -762,7 +784,7 @@ def automata(text: str, rule: str, output_dir: str, iterations: int):
         raise click.ClickException(str(e))
 
 @cli.command()
-@click.argument('terms', nargs=-1, required=True)
+@click.argument('terms', nargs=-1, required=False)
 @click.option('--model', '-m', default='all-MiniLM-L6-v2', help='Name of the sentence transformer model to use')
 @click.option('--dimensions', '-d', default=3, help='Number of dimensions for visualization')
 @click.option('--output', '-o', default='visualizations', help='Output directory for visualizations')
@@ -810,12 +832,30 @@ def manifold(terms: List[str], model: str, dimensions: int, output: str, save_fo
 @click.option('--interval', '-i', default='1h', help='Sampling interval (e.g. 1m, 5m, 1h)')
 @click.option('--output-dir', default='visualizations/timeseries', help='Output directory for visualizations')
 @click.option('--casting-method', type=click.Choice(['yarrow', 'coins', 'bones']), default='bones', help='Method for casting hexagrams')
-@click.option('--local/--server', default=True, help='Use local visualization instead of server')
+@click.option('--local/--server', default=False, help='Use local visualization instead of server')
+@click.option('--server-url', default=None, help='Remote visualization server URL')
 @click.option('--pattern-type', type=click.Choice(['cyclic', 'linear']), default='cyclic', help='Type of temporal pattern to generate')
+@click.option('--cloud-provider', type=click.Choice(['s3', 'gcs', 'azure', 'huggingface']), help='Cloud storage provider')
+@click.option('--cloud-credentials', type=click.Path(exists=True, path_type=Path), help='Path to cloud credentials file')
 @with_progress("Generating time-series visualization")
-def timeseries(terms: Optional[List[str]], timeframe: str, interval: str, output_dir: str, 
-               casting_method: str, local: bool, pattern_type: str):
-    """Generate time-series visualization showing term evolution over time. If no terms provided, uses I Ching-based temporal analysis."""
+def timeseries(
+    terms: Optional[List[str]],
+    timeframe: str,
+    interval: str,
+    output_dir: str,
+    casting_method: str,
+    local: bool,
+    server_url: Optional[str],
+    pattern_type: str,
+    cloud_provider: Optional[str],
+    cloud_credentials: Optional[Path]
+):
+    """Generate time-series visualization showing term evolution over time.
+    
+    If no terms provided, uses I Ching-based temporal analysis.
+    Supports cloud storage through various providers for sharing and collaboration.
+    Can use either local rendering or a remote visualization server.
+    """
     try:
         # Import required modules
         from word_manifold.automata.hexagram_rules import (
@@ -825,6 +865,25 @@ def timeseries(terms: Optional[List[str]], timeframe: str, interval: str, output
         from word_manifold.embeddings.word_embeddings import WordEmbeddings
         from word_manifold.visualization.engines.timeseries import TimeSeriesEngine
         from word_manifold.visualization.renderers.timeseries import TimeSeriesRenderer
+        
+        # Determine server URL
+        vis_server_url = server_url or SERVER_URL
+        if not local and not vis_server_url:
+            raise click.ClickException("Server URL must be provided when using remote visualization")
+            
+        # Ensure server is running if using local server
+        if not local and not server_url:
+            ensure_server_running()
+        
+        # Load cloud credentials if provided
+        cloud_creds = None
+        if cloud_credentials:
+            try:
+                with open(cloud_credentials) as f:
+                    cloud_creds = json.load(f)
+            except Exception as e:
+                logger.warning(f"Failed to load cloud credentials: {e}")
+                cloud_provider = None
         
         # Create output directory
         output_path = Path(output_dir)
@@ -853,7 +912,10 @@ def timeseries(terms: Optional[List[str]], timeframe: str, interval: str, output
         
         # Initialize visualization components
         engine = TimeSeriesEngine(embeddings)
-        renderer = TimeSeriesRenderer()
+        renderer = TimeSeriesRenderer(
+            cloud_provider=cloud_provider,
+            cloud_credentials=cloud_creds
+        )
         
         hexagram_data = None
         # If no terms provided, use I Ching-based analysis
@@ -900,15 +962,31 @@ def timeseries(terms: Optional[List[str]], timeframe: str, interval: str, output
         embeddings.load_terms(terms)
         
         # Process data using engine
-        data = engine.process_data(terms, timeframe, interval, pattern_type)
+        data = {
+            'terms': terms if terms else default_terms,
+            'timeframe': timeframe,
+            'interval': interval,
+            'pattern_type': pattern_type,
+            'embeddings': [embeddings.get_embedding(t).tolist() for t in (terms if terms else default_terms)],
+            'hexagram_data': hexagram_data
+        }
         
         try:
             if local:
-                # Use local renderer
-                output_file = renderer.render_local(data, output_path)
+                # Use local renderer with cloud upload if configured
+                output_file = renderer.render_local(
+                    data,
+                    output_path,
+                    upload_to_cloud=bool(cloud_provider)
+                )
             else:
-                # Try server-based visualization
-                response = renderer.render_server(data, SERVER_URL)
+                # Try server-based visualization with cloud storage
+                response = renderer.render_server(
+                    data,
+                    vis_server_url,
+                    endpoint='/api/v1/visualize/timeseries',
+                    store_in_cloud=bool(cloud_provider)
+                )
                 
                 if response.get('error'):
                     raise click.ClickException(response['error'])
@@ -919,17 +997,38 @@ def timeseries(terms: Optional[List[str]], timeframe: str, interval: str, output
                 output_file = output_path / f"timeseries_{timeframe}.{response['format']}"
                 output_file.write_bytes(img_data)
                 
+                # Store any insights returned from server
+                if response.get('insights'):
+                    insights_file = output_path / 'insights.json'
+                    with open(insights_file, 'w') as f:
+                        json.dump(response['insights'], f, indent=2)
+                
         except Exception as e:
-            if not local:
+            if not local and not server_url:
                 logger.warning(f"Server visualization failed: {e}. Falling back to local visualization...")
                 output_file = renderer.render_local(data, output_path)
             else:
                 raise
         
-        # Generate insights
-        renderer.render_insights(data, hexagram_data, output_path)
+        # Generate insights with cloud storage if configured
+        if local or not response.get('insights'):
+            renderer.render_insights(
+                data,
+                hexagram_data,
+                output_path,
+                upload_to_cloud=bool(cloud_provider)
+            )
         
+        # Display results
         click.echo(f"Time-series visualization saved to {output_file}")
+        
+        # Display cloud storage information if available
+        insights = renderer.get_insights()
+        cloud_info = [i for i in insights if "Cloud Storage Information" in i]
+        if cloud_info:
+            click.echo("\nCloud Storage Information:")
+            for info in cloud_info:
+                click.echo(info)
         
     except Exception as e:
         logger.error("Error in time-series visualization", exc_info=e)
@@ -1024,20 +1123,18 @@ def hexagrams(text: Optional[str], output_dir: str, casting_method: str):
             # between shadows (hexagrams) and reality (transformations)
             shape_vis.create_shape_field(
                 cave_text,
-                output_path=str(output_path / "platos_cave_parallel.png"),
-                show_connections=True
+                chunk_size=1  # Process one sentence at a time
             )
             
             # Create comparative visualization of different levels of reality
             reality_levels = [
-                "The shadows on the wall are like the hexagram lines we first perceive",
-                "The objects casting shadows are like the changing situations in life",
+                "The shadows on the wall are like our limited perceptions",
+                "The objects casting shadows are like the true forms",
                 "The sun outside is like the eternal principles that generate all change"
             ]
             shape_vis.create_comparative_visualization(
-                reality_levels,
-                labels=["Shadows", "Objects", "Source"],
-                output_path=str(output_path / "reality_levels.png")
+                texts=reality_levels,
+                labels=["Shadows", "Objects", "Source"]
             )
         
         # Add text to manifold
@@ -1066,10 +1163,349 @@ def hexagrams(text: Optional[str], output_dir: str, casting_method: str):
         logger.error("Error in hexagram visualization", exc_info=e)
         raise click.ClickException(str(e))
 
+@cli.command()
+@click.argument('pattern_type', type=click.Choice(['mandala', 'wave', 'field', 'blend']))
+@click.option('--width', default=80, help='Width of the pattern')
+@click.option('--height', default=40, help='Height of the pattern')
+@click.option('--radius', default=15, help='Radius for mandala patterns')
+@click.option('--complexity', default=2.0, help='Pattern complexity (higher = more intricate)')
+@click.option('--density', default=0.6, help='Pattern density (0.0 to 1.0)')
+@click.option('--style', type=click.Choice([
+    'mystical', 'geometric', 'natural', 'runic', 'mathematical',
+    'cyberpunk', 'ethereal', 'ancient', 'digital', 'cosmic', 'braille',
+    'rainbow_pulse', 'acid', 'plasma', 'fractal', 'quantum', 'neural', 'dream',
+    'spectrum', 'intensity', 'frequency'
+]), default='mystical', help='Visual style to use')
+@click.option('--field-type', type=click.Choice([
+    'organic', 'crystalline', 'flowing', 'chaotic'
+]), default='organic', help='Type of field pattern')
+@click.option('--wave-type', type=click.Choice([
+    'sine', 'square', 'triangle', 'sawtooth'
+]), default='sine', help='Type of wave pattern')
+@click.option('--layers', default=3, help='Number of mandala layers')
+@click.option('--symmetry', default=8, help='Number of mandala symmetry axes')
+@click.option('--interference/--no-interference', default=False, help='Add wave interference patterns')
+@click.option('--animate/--no-animate', default=False, help='Create animation')
+@click.option('--frames', default=60, help='Number of animation frames')
+@click.option('--frame-delay', default=0.05, help='Delay between animation frames')
+@click.option('--theme', type=click.Choice([
+    'none', 'fire', 'water', 'earth', 'air', 'cosmic', 'mystic',
+    'rainbow', 'sunset', 'forest', 'ocean', 'ethereal', 'void'
+]), default='none', help='Color theme to use')
+@click.option('--output-dir', default='visualizations/ascii', help='Output directory')
+@click.option('--blend-with', type=click.Choice(['none', 'mandala', 'wave', 'field']), default='none', help='Pattern to blend with')
+@click.option('--blend-mode', type=click.Choice([
+    'overlay', 'add', 'multiply', 'screen', 'difference'
+]), default='overlay', help='Blend mode to use')
+@click.option('--blend-alpha', default=0.7, help='Blend opacity (0.0 to 1.0)')
+@click.option('--blend-width', default=None, type=int, help='Width for blended pattern')
+@click.option('--blend-height', default=None, type=int, help='Height for blended pattern')
+@click.option('--output-format', type=click.Choice(['text', 'png', 'gif']), default='text', help='Output format')
+@click.option('--image-scale', default=1.0, help='Scale factor for image output')
+@click.option('--image-glow/--no-image-glow', default=True, help='Add glow effect to image')
+@click.option('--image-blur/--no-image-blur', default=True, help='Add blur effect to image')
+@click.option('--image-enhance/--no-image-enhance', default=True, help='Enhance image contrast/brightness')
+@click.option('--background-color', default=None, help='Background color in hex format (e.g. #000000)')
+@click.option('--effect', type=click.Choice([
+    'fractals', 'neural', 'quantum', 'flow_field', 'reaction_diffusion'
+]), multiple=True, help='Add visual effects (can specify multiple)')
+@click.option('--audio', type=click.Path(exists=True), help='Audio file for reactive effects')
+@click.option('--audio-intensity', default=1.0, help='Intensity of audio reactive effects (0.0 to 2.0)')
+@click.option('--message', help='Subliminal message to embed')
+@click.option('--symbol', type=click.Choice([
+    'protection', 'wisdom', 'power', 'harmony', 'transformation',
+    'unity', 'transcendence', 'infinity', 'consciousness', 'enlightenment'
+]), multiple=True, help='Symbols to embed (can specify multiple)')
+@click.option('--sigil', type=click.Choice([
+    'focus', 'clarity', 'energy', 'peace', 'growth'
+]), multiple=True, help='Sigils to embed (can specify multiple)')
+def ascii(
+    pattern_type: str,
+    width: int,
+    height: int,
+    radius: int,
+    complexity: float,
+    density: float,
+    style: str,
+    field_type: str,
+    wave_type: str,
+    layers: int,
+    symmetry: int,
+    interference: bool,
+    animate: bool,
+    frames: int,
+    frame_delay: float,
+    theme: str,
+    output_dir: str,
+    blend_with: str,
+    blend_mode: str,
+    blend_alpha: float,
+    blend_width: Optional[int],
+    blend_height: Optional[int],
+    output_format: str,
+    image_scale: float,
+    image_glow: bool,
+    image_blur: bool,
+    image_enhance: bool,
+    background_color: Optional[str],
+    effect: Tuple[str, ...],
+    audio: Optional[str],
+    audio_intensity: float,
+    message: Optional[str],
+    symbol: Tuple[str, ...],
+    sigil: Tuple[str, ...]
+):
+    """Generate rich ASCII art patterns and animations with audio reactivity and subliminal effects.
+    
+    Examples:
+    \b
+    # Create an audio-reactive mandala that pulses with the beat
+    word-manifold ascii mandala --style spectrum --output-format gif --audio music.mp3
+    
+    # Generate a mystical pattern with embedded sigils and symbols
+    word-manifold ascii field --style mystical --sigil focus --sigil energy --symbol wisdom
+    
+    # Create a quantum pattern with subliminal message
+    word-manifold ascii wave --style quantum --message "expand consciousness" --effect quantum
+    
+    # Make an intense audio-reactive animation with multiple effects
+    word-manifold ascii mandala --style acid --audio trance.mp3 --audio-intensity 2.0 \\
+        --effect fractals --effect flow_field --symbol enlightenment --symbol transcendence
+    """
+    try:
+        # Initialize components
+        engine = get_ascii_engine().ASCIIEngine()
+        ascii_renderer = get_ascii_renderer().ASCIIRenderer()
+        
+        # Initialize image renderer if needed
+        image_renderer = None
+        if output_format in ['png', 'gif']:
+            from word_manifold.visualization.renderers.image_renderer import ImageRenderer
+            image_renderer = ImageRenderer(font_size=20)
+        
+        # Create output directory
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        # Generate primary pattern
+        if pattern_type == 'mandala':
+            pattern = engine.generate_mandala(
+                radius=radius,
+                complexity=complexity,
+                style=style,
+                layers=layers,
+                symmetry=symmetry
+            )
+        elif pattern_type == 'wave':
+            pattern = engine.generate_field(
+                width=width,
+                height=height,
+                density=density,
+                style=style,
+                pattern_type='flowing'
+            )
+            engine.add_wave_pattern(
+                pattern,
+                frequency=0.1,
+                phase=0,
+                wave_type=wave_type,
+                interference=interference
+            )
+            if interference:
+                engine.add_wave_pattern(
+                    pattern,
+                    frequency=0.15,
+                    phase=math.pi/3,
+                    wave_type=wave_type,
+                    interference=True
+                )
+        elif pattern_type == 'field':
+            pattern = engine.generate_field(
+                width=width,
+                height=height,
+                density=density,
+                style=style,
+                pattern_type=field_type
+            )
+        
+        # Handle blending if requested
+        if blend_with != 'none':
+            # Create blend pattern
+            if blend_with == 'mandala':
+                blend_pattern = engine.generate_mandala(
+                    radius=min(width, height) // 4,
+                    complexity=complexity,
+                    style=style,
+                    layers=layers,
+                    symmetry=symmetry
+                )
+            elif blend_with == 'wave':
+                blend_pattern = engine.generate_field(
+                    width=width,
+                    height=height,
+                    density=density,
+                    style=style,
+                    pattern_type='flowing'
+                )
+                engine.add_wave_pattern(
+                    blend_pattern,
+                    frequency=0.15,
+                    phase=math.pi/3,
+                    wave_type=wave_type,
+                    interference=interference
+                )
+            else:  # field
+                blend_pattern = engine.generate_field(
+                    width=width,
+                    height=height,
+                    density=density,
+                    style=style,
+                    pattern_type=field_type
+                )
+            
+            # Determine blend dimensions
+            blend_width = blend_width or max(pattern.width, blend_pattern.width)
+            blend_height = blend_height or max(pattern.height, blend_pattern.height)
+            
+            # Resize patterns if needed
+            if pattern.width != blend_width or pattern.height != blend_height:
+                pattern = engine.resize_pattern(pattern, blend_width, blend_height)
+            if blend_pattern.width != blend_width or blend_pattern.height != blend_height:
+                blend_pattern = engine.resize_pattern(blend_pattern, blend_width, blend_height)
+            
+            # Blend patterns
+            pattern = engine.blend_patterns(
+                pattern,
+                blend_pattern,
+                alpha=blend_alpha,
+                blend_mode=blend_mode
+            )
+        
+        # Handle output format
+        if output_format == 'text':
+            # Save ASCII text
+            static_path = output_path / f"{pattern_type}_{style}.txt"
+            ascii_renderer.save_pattern(
+                pattern,
+                static_path,
+                include_metadata=True
+            )
+            logger.info(f"Saved ASCII pattern to {static_path}")
+            
+            if animate:
+                frames_path = output_path / f"{pattern_type}_{style}_animation.txt"
+                animation_frames = engine.create_animation_frames(pattern, n_frames=frames)
+                ascii_renderer.save_animation(animation_frames, frames_path)
+                logger.info(f"Saved ASCII animation to {frames_path}")
+                
+                # Display animation in terminal if supported
+                if ascii_renderer.supports_color and theme != 'none':
+                    logger.info("\nDisplaying animation (Ctrl+C to stop)...")
+                    ascii_renderer.render_animation(
+                        animation_frames,
+                        frame_delay=frame_delay,
+                        theme=theme,
+                        loop=True
+                    )
+            
+            # Display static pattern in terminal if theme requested
+            elif theme != 'none' and ascii_renderer.supports_color:
+                logger.info("\nDisplaying pattern:")
+                ascii_renderer.render_pattern(pattern, theme=theme)
+                
+        else:  # png or gif
+            # Convert background color if provided
+            bg_color = None
+            if background_color:
+                bg_color = tuple(int(background_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
+            
+            if animate and output_format == 'gif':
+                # Create and save animated GIF
+                animation_frames = engine.create_animation_frames(pattern, n_frames=frames)
+                gif_path = output_path / f"{pattern_type}_{style}.gif"
+                
+                # Prepare render parameters
+                render_params = {
+                    'style': style,
+                    'scale': image_scale,
+                    'duration': int(frame_delay * 1000),
+                    'glow': image_glow,
+                    'blur': image_blur,
+                    'enhance': image_enhance,
+                }
+                
+                # Add effects if specified
+                if effect:
+                    render_params['psychedelic_effects'] = list(effect)
+                
+                # Add audio reactivity if specified
+                if audio:
+                    render_params.update({
+                        'audio_file': audio,
+                        'audio_intensity': audio_intensity
+                    })
+                
+                # Add subliminal effects if specified
+                if message:
+                    render_params['subliminal_message'] = message
+                if symbol:
+                    render_params['subliminal_symbols'] = list(symbol)
+                if sigil:
+                    render_params['subliminal_sigils'] = list(sigil)
+                
+                image_renderer.save_animation(
+                    animation_frames,
+                    str(gif_path),
+                    **render_params
+                )
+                logger.info(f"Saved animated GIF to {gif_path}")
+            else:
+                # Create and save static image
+                img_path = output_path / f"{pattern_type}_{style}.png"
+                
+                # Prepare render parameters
+                render_params = {
+                    'style': style,
+                    'scale': image_scale,
+                    'glow': image_glow,
+                    'blur': image_blur,
+                    'enhance': image_enhance,
+                    'background_color': bg_color,
+                }
+                
+                # Add effects if specified
+                if effect:
+                    render_params['psychedelic_effects'] = list(effect)
+                
+                # Add audio reactivity if specified
+                if audio:
+                    render_params.update({
+                        'audio_file': audio,
+                        'audio_intensity': audio_intensity
+                    })
+                
+                # Add subliminal effects if specified
+                if message:
+                    render_params['subliminal_message'] = message
+                if symbol:
+                    render_params['subliminal_symbols'] = list(symbol)
+                if sigil:
+                    render_params['subliminal_sigils'] = list(sigil)
+                
+                image_renderer.save_pattern(
+                    pattern,
+                    str(img_path),
+                    **render_params
+                )
+                logger.info(f"Saved image to {img_path}")
+            
+    except Exception as e:
+        logger.error("Error generating visualization", exc_info=e)
+        raise click.ClickException(str(e))
+
 cli.add_command(manifold)
 cli.add_command(timeseries)
 cli.add_command(server)
 
 if __name__ == '__main__':
-    # Pass None for optional arguments to use their default values
-    cli(default_map={'debug': False, 'config': None}, auto_envvar_prefix='WORD_MANIFOLD') 
+    cli.main(standalone_mode=False) 

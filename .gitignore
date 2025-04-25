@@ -24,3 +24,6 @@ htmlcov/
 .DS_Store
 visualizations/
 *.log
+data/
+.vscode/
+logs/

@@ -1,0 +1,59 @@
+# Ray job configuration for sacred geometry audio-visual generation
+
+# Entrypoint configuration
+entrypoint: scripts/sacred_audiovis_job.py::job_entrypoint
+runtime_env:
+  working_dir: .
+  pip:
+    - numpy>=1.20.0
+    - scipy>=1.7.0
+    - librosa>=0.11.0
+    - soundfile>=0.13.0
+    - ray>=2.0.0
+
+# Job resources
+runtime_resources:
+  CPU: 4
+  memory: 16000000000  # 16GB
+
+# Job parameters
+params:
+  pattern_type: mandala
+  recursive_depth: 3
+  batch_size: 10
+  output_dir: data/audiovis/complex
+  audio_params:
+    sample_rate: 44100
+    duration: 15.0
+    amplitude: 0.9
+  visual_params:
+    width: 120
+    height: 60
+    density: 0.7
+    style: mystical
+    symmetry: 12
+    layers: 7
+
+# Job metadata
+metadata:
+  name: sacred-audiovis-generation
+  owner: word-manifold
+  priority: medium
+
+# Cluster configuration
+cluster:
+  head_node_type: head
+  worker_node_type: worker
+  min_workers: 2
+  max_workers: 8
+
+# Monitoring
+monitoring:
+  enabled: true
+  metrics_export_port: 8080
+  prometheus_enabled: true
+  dashboard_enabled: true
+
+# Error handling
+max_retries: 3
+retry_delay_s: 10 

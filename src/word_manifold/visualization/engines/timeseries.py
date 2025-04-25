@@ -9,185 +9,229 @@ from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime, timedelta
 import numpy as np
 from enum import Enum
+import pandas as pd
+from scipy import signal
+import logging
 
 from ...embeddings.word_embeddings import WordEmbeddings
 from ..base import VisualizationEngine
 
+logger = logging.getLogger(__name__)
+
 class PatternType(Enum):
     """Types of temporal patterns that can be generated."""
-    CYCLIC = "cyclic"           # Cyclic patterns based on trigonometric functions
-    LINEAR = "linear"           # Linear trends with embedding-based slopes
-    HARMONIC = "harmonic"       # Multiple harmonics with embedding-weighted amplitudes
-    SPIRAL = "spiral"           # Spiral patterns showing cyclic evolution
-    WAVE = "wave"              # Complex waveforms combining multiple patterns
+    CYCLIC = "cyclic"
+    LINEAR = "linear"
+    HARMONIC = "harmonic"
+    SPIRAL = "spiral"
+    WAVE = "wave"
 
 class TimeSeriesEngine(VisualizationEngine):
-    """Engine for generating and processing time series data."""
+    """Engine for generating time series patterns and analysis."""
     
-    def __init__(self, embeddings: WordEmbeddings):
-        """Initialize the engine with word embeddings."""
-        super().__init__()
-        self.embeddings = embeddings
-        
-    def generate_time_points(
+    def __init__(
         self,
-        timeframe: str,
-        interval: str,
-        end_time: Optional[datetime] = None
-    ) -> Tuple[List[datetime], Dict[str, Any]]:
-        """Generate time points and temporal metadata."""
-        end_time = end_time or datetime.now()
+        word_embeddings: Optional[WordEmbeddings] = None,
+        pattern_type: str = "cyclic",
+        timeframe: str = "1d",
+        interval: str = "1h"
+    ):
+        """
+        Initialize the time series engine.
         
+        Args:
+            word_embeddings: Optional word embeddings for semantic analysis
+            pattern_type: Type of pattern to generate (default: cyclic)
+            timeframe: Time range to analyze (e.g. 1h, 1d, 1w)
+            interval: Sampling interval (e.g. 1m, 5m, 1h)
+        """
+        super().__init__()
+        self.word_embeddings = word_embeddings
+        self.pattern_type = PatternType(pattern_type)
+        self.timeframe = timeframe
+        self.interval = interval
+        self._data = None
+        
+    def process_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Process input data to generate time series visualization data.
+        
+        Args:
+            data: Dictionary containing:
+                - terms: List of terms to analyze
+                - embeddings: List of embeddings (optional)
+                - timeframe: Time range (optional)
+                - interval: Sampling interval (optional)
+                - pattern_type: Type of pattern (optional)
+                - hexagram_data: I Ching data (optional)
+                
+        Returns:
+            Dictionary containing processed data including:
+                - time_points: Array of timestamps
+                - patterns: Dictionary mapping terms to pattern values
+                - correlations: Matrix of pattern correlations
+                - metadata: Dictionary of temporal metadata
+        """
+        # Update parameters if provided
+        if 'timeframe' in data:
+            self.timeframe = data['timeframe']
+        if 'interval' in data:
+            self.interval = data['interval']
+        if 'pattern_type' in data:
+            self.pattern_type = PatternType(data['pattern_type'])
+            
+        # Generate time points
+        time_points, metadata = self.generate_time_points()
+        
+        # Get terms and embeddings
+        terms = data.get('terms', [])
+        embeddings = data.get('embeddings', [])
+        if not embeddings and self.word_embeddings:
+            embeddings = [self.word_embeddings.get_embedding(t) for t in terms]
+        
+        # Generate patterns
+        patterns = self.generate_patterns(
+            terms=terms,
+            embeddings=embeddings,
+            time_points=time_points,
+            hexagram_data=data.get('hexagram_data')
+        )
+        
+        # Calculate correlations
+        correlations = np.corrcoef([p for p in patterns.values()])
+        
+        # Store processed data
+        self._data = {
+            'time_points': time_points.tolist(),
+            'patterns': {t: p.tolist() for t, p in patterns.items()},
+            'correlations': correlations.tolist(),
+            'metadata': {
+                'temporal': metadata,
+                'pattern_type': self.pattern_type.value,
+                'terms': terms
+            }
+        }
+        
+        return self._data
+        
+    def generate_time_points(self) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """
+        Generate time points based on timeframe and interval.
+        
+        Returns:
+            Tuple containing:
+                - Array of timestamps
+                - Dictionary of temporal metadata
+        """
         # Parse timeframe
-        if timeframe.endswith('h'):
-            start_time = end_time - timedelta(hours=int(timeframe[:-1]))
-            step = timedelta(minutes=int(interval[:-1]) if interval.endswith('m') else int(interval[:-1])*60)
+        unit = self.timeframe[-1]
+        value = int(self.timeframe[:-1])
+        
+        # Convert to timedelta
+        if unit == 'h':
+            delta = timedelta(hours=value)
             scale = 'hourly'
-        elif timeframe.endswith('d'):
-            start_time = end_time - timedelta(days=int(timeframe[:-1]))
-            step = timedelta(hours=int(interval[:-1]))
+        elif unit == 'd':
+            delta = timedelta(days=value)
             scale = 'daily'
-        elif timeframe.endswith('w'):
-            start_time = end_time - timedelta(weeks=int(timeframe[:-1]))
-            step = timedelta(days=int(interval[:-1]) if interval.endswith('d') else 1)
+        elif unit == 'w':
+            delta = timedelta(weeks=value)
             scale = 'weekly'
-        else:  # months
-            start_time = end_time - timedelta(days=30*int(timeframe[:-1]))
-            step = timedelta(days=int(interval[:-1]) if interval.endswith('d') else 1)
-            scale = 'monthly'
+        else:  # Default to daily
+            delta = timedelta(days=value)
+            scale = 'daily'
             
-        time_points = []
-        current = start_time
-        while current <= end_time:
-            time_points.append(current)
-            current += step
-            
+        # Generate time points
+        end_time = datetime.now()
+        start_time = end_time - delta
+        
+        time_points = pd.date_range(
+            start=start_time,
+            end=end_time,
+            freq=self.interval
+        )
+        
         metadata = {
-            'start_time': start_time,
-            'end_time': end_time,
-            'interval': step,
+            'start_time': start_time.isoformat(),
+            'end_time': end_time.isoformat(),
+            'interval': self.interval,
             'scale': scale,
             'num_points': len(time_points)
         }
-            
-        return time_points, metadata
+        
+        return np.array(time_points), metadata
         
     def generate_patterns(
         self,
         terms: List[str],
-        time_points: List[datetime],
-        pattern_type: str = 'cyclic'
-    ) -> Dict[str, Dict[str, Any]]:
-        """Generate temporal patterns for terms based on their embeddings."""
+        embeddings: List[np.ndarray],
+        time_points: np.ndarray,
+        hexagram_data: Optional[Dict] = None
+    ) -> Dict[str, np.ndarray]:
+        """
+        Generate temporal patterns for terms.
+        
+        Args:
+            terms: List of terms
+            embeddings: List of term embeddings
+            time_points: Array of timestamps
+            hexagram_data: Optional I Ching data
+            
+        Returns:
+            Dictionary mapping terms to pattern values
+        """
         patterns = {}
         num_points = len(time_points)
         
-        for term in terms:
-            embedding = self.embeddings.get_embedding(term)
-            if embedding is not None:
-                pattern_data = {'values': None, 'metadata': {}}
-                x = np.linspace(0, 1, num_points)
+        for i, (term, embedding) in enumerate(zip(terms, embeddings)):
+            # Base pattern based on type
+            if self.pattern_type == PatternType.CYCLIC:
+                # Cyclic pattern with phase shift based on embedding
+                phase = 2 * np.pi * (i / len(terms))
+                pattern = np.sin(np.linspace(0, 4*np.pi, num_points) + phase)
                 
-                if pattern_type == PatternType.CYCLIC.value:
-                    # Enhanced cyclic pattern with phase shift
-                    phase = np.arctan2(embedding[1], embedding[0])
-                    pattern = np.sin(np.linspace(0, 4*np.pi, num_points) + phase) * embedding[0] + \
-                             np.cos(np.linspace(0, 2*np.pi, num_points) + phase) * embedding[1]
-                    pattern_data['metadata']['phase'] = phase
-                    
-                elif pattern_type == PatternType.LINEAR.value:
-                    # Linear trend with confidence bounds
-                    slope = np.mean(embedding[:2])
-                    intercept = embedding[2]
-                    pattern = slope * x + intercept
-                    pattern_data['metadata'].update({
-                        'slope': slope,
-                        'intercept': intercept,
-                        'confidence': abs(embedding[3]) if len(embedding) > 3 else 0.5
-                    })
-                    
-                elif pattern_type == PatternType.HARMONIC.value:
-                    # Multiple harmonics with embedding-weighted amplitudes
-                    harmonics = []
-                    for i, comp in enumerate(embedding[:4]):
-                        harmonic = comp * np.sin(2*np.pi*(i+1)*x)
-                        harmonics.append(harmonic)
-                    pattern = sum(harmonics)
-                    pattern_data['metadata']['harmonics'] = len(harmonics)
-                    
-                elif pattern_type == PatternType.SPIRAL.value:
-                    # Spiral pattern showing cyclic evolution
-                    radius = 0.5 + 0.5 * np.tanh(embedding[0])
-                    frequency = 1 + abs(embedding[1])
-                    t = np.linspace(0, 4*np.pi, num_points)
-                    pattern = radius * t * np.sin(frequency * t)
-                    pattern_data['metadata'].update({
-                        'radius': radius,
-                        'frequency': frequency
-                    })
-                    
-                else:  # WAVE
-                    # Complex waveform combining multiple patterns
-                    components = []
-                    weights = np.abs(embedding[:4]) / np.sum(np.abs(embedding[:4]))
-                    
-                    # Fast oscillation
-                    components.append(weights[0] * np.sin(8*np.pi*x))
-                    # Medium oscillation
-                    components.append(weights[1] * np.sin(4*np.pi*x))
-                    # Slow trend
-                    components.append(weights[2] * x)
-                    # Random fluctuation
-                    noise = weights[3] * np.random.randn(num_points) * 0.1
-                    
-                    pattern = sum(components) + noise
-                    pattern_data['metadata']['components'] = len(components)
+            elif self.pattern_type == PatternType.LINEAR:
+                # Linear trend with slope based on embedding
+                slope = 0.5 + np.mean(embedding) * 0.5
+                pattern = np.linspace(0, slope * num_points, num_points)
                 
-                # Normalize pattern
-                pattern = (pattern - np.min(pattern)) / (np.max(pattern) - np.min(pattern))
-                pattern_data['values'] = pattern
-                pattern_data['metadata'].update({
-                    'mean': float(np.mean(pattern)),
-                    'std': float(np.std(pattern)),
-                    'trend': 'increasing' if pattern[-1] > pattern[0] else 'decreasing',
-                    'volatility': float(np.std(np.diff(pattern)))
-                })
+            elif self.pattern_type == PatternType.HARMONIC:
+                # Harmonic pattern with frequencies from embedding
+                freqs = np.abs(embedding[:3])  # Use first 3 components
+                pattern = sum(
+                    amp * np.sin(freq * np.linspace(0, 2*np.pi, num_points))
+                    for amp, freq in zip([0.5, 0.3, 0.2], freqs)
+                )
                 
-                patterns[term] = pattern_data
+            elif self.pattern_type == PatternType.SPIRAL:
+                # Spiral pattern with radius from embedding
+                t = np.linspace(0, 8*np.pi, num_points)
+                radius = 0.5 + np.mean(embedding) * 0.5
+                pattern = radius * t * np.cos(t)
                 
+            else:  # WAVE
+                # Complex waveform
+                t = np.linspace(0, 4*np.pi, num_points)
+                pattern = np.sin(t) + 0.5 * np.sin(2*t + np.pi/4)
+            
+            # Apply hexagram influence if available
+            if hexagram_data:
+                hexagram = hexagram_data.get('hexagram')
+                if hexagram:
+                    # Modify pattern based on hexagram number
+                    modifier = hexagram.number / 64.0
+                    pattern = pattern * (1 + modifier)
+            
+            # Normalize pattern
+            pattern = (pattern - pattern.min()) / (pattern.max() - pattern.min())
+            patterns[term] = pattern
+            
         return patterns
         
-    def process_data(
-        self,
-        terms: List[str],
-        timeframe: str,
-        interval: str,
-        pattern_type: str = PatternType.CYCLIC.value
-    ) -> Dict[str, Any]:
-        """Process time series data for visualization."""
-        time_points, temporal_metadata = self.generate_time_points(timeframe, interval)
-        patterns = self.generate_patterns(terms, time_points, pattern_type)
+    def get_data(self) -> Optional[Dict[str, Any]]:
+        """Get the last processed data."""
+        return self._data
         
-        # Calculate cross-term correlations
-        correlations = {}
-        if len(terms) > 1:
-            for i, term1 in enumerate(terms):
-                for term2 in terms[i+1:]:
-                    if term1 in patterns and term2 in patterns:
-                        corr = np.corrcoef(
-                            patterns[term1]['values'],
-                            patterns[term2]['values']
-                        )[0,1]
-                        correlations[f"{term1}-{term2}"] = float(corr)
-        
-        return {
-            'time_points': time_points,
-            'patterns': patterns,
-            'correlations': correlations,
-            'metadata': {
-                'timeframe': timeframe,
-                'interval': interval,
-                'pattern_type': pattern_type,
-                'temporal': temporal_metadata
-            }
-        } 
+    def clear_data(self) -> None:
+        """Clear the stored data."""
+        self._data = None 

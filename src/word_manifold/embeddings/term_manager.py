@@ -14,10 +14,95 @@ from sentence_transformers import SentenceTransformer
 from collections import OrderedDict
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+import os
+import signal
+import tempfile
+import json
+from pathlib import Path
+import atexit
+import sys
+import weakref
+import pickle
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Global registry of active managers
+_active_managers = weakref.WeakSet()
+
+def _cleanup_managers():
+    """Clean up all active managers during interpreter shutdown."""
+    for manager in _active_managers:
+        try:
+            manager.shutdown()
+        except:
+            pass
+
+# Register cleanup function
+atexit.register(_cleanup_managers)
+
+class TermManagerProcess(mp.Process):
+    """Separate process for term management to avoid pickling issues."""
+    
+    def __init__(self, model_name: str, task_queue: mp.Queue, result_queue: mp.Queue):
+        super().__init__(daemon=True)
+        self.model_name = model_name
+        self.task_queue = task_queue
+        self.result_queue = result_queue
+        self.running = True
+        
+    def run(self):
+        """Run the term management process."""
+        try:
+            # Initialize model
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            model = SentenceTransformer(self.model_name)
+            model.to(device)
+            
+            while self.running:
+                try:
+                    # Get task from queue with timeout
+                    task = self.task_queue.get(timeout=1)
+                except Empty:
+                    continue
+                except (EOFError, BrokenPipeError):
+                    break
+                
+                if task['type'] == 'shutdown':
+                    break
+                    
+                try:
+                    if task['type'] == 'get_embedding':
+                        embedding = model.encode([task['term']], convert_to_numpy=True)[0]
+                        self.result_queue.put({
+                            'type': 'embedding',
+                            'term': task['term'],
+                            'embedding': embedding
+                        })
+                except Exception as e:
+                    self.result_queue.put({
+                        'type': 'error',
+                        'error': str(e)
+                    })
+                    
+        except Exception as e:
+            try:
+                self.result_queue.put({
+                    'type': 'error',
+                    'error': str(e)
+                })
+            except:
+                pass
+            
+        finally:
+            # Clean up resources
+            try:
+                model.cpu()
+                del model
+                torch.cuda.empty_cache()
+            except:
+                pass
 
 class TermManager:
     """
@@ -25,13 +110,7 @@ class TermManager:
     Provides caching and asynchronous processing capabilities with proper synchronization.
     """
     
-    def __init__(
-        self,
-        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-        cache_size: int = 10000,
-        batch_size: int = 32,
-        processing_timeout: float = 30.0
-    ):
+    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2", **kwargs):
         """
         Initialize the TermManager.
         
@@ -40,24 +119,39 @@ class TermManager:
             cache_size: Maximum number of terms to cache
             batch_size: Size of batches for processing
             processing_timeout: Maximum time to wait for term processing (seconds)
+            cache_dir: Optional directory for caching embeddings
         """
         self.model_name = model_name
-        self.cache_size = cache_size
-        self.batch_size = batch_size
-        self.processing_timeout = processing_timeout
+        self.cache_size = kwargs.get('cache_size', 10000)
+        self.batch_size = kwargs.get('batch_size', 32)
+        self.processing_timeout = kwargs.get('processing_timeout', 30.0)
+        self.cache_dir = Path(kwargs.get('cache_dir', tempfile.gettempdir())) / "term_manager"
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create state file
+        self.state_file = self.cache_dir / "state.json"
+        self.pid_file = self.cache_dir / "pid.txt"
+        
+        # Save PID
+        with open(self.pid_file, "w") as f:
+            f.write(str(os.getpid()))
         
         # Initialize multiprocessing components
         self.task_queue = mp.Queue()
         self.result_queue = mp.Queue()
-        manager = mp.Manager()
-        self.cache = manager.dict()
-        self.term_sets = manager.dict()
-        self.processing_terms = manager.dict()  # Track terms being processed
-        self.term_locks = manager.dict()  # Locks for term synchronization
-        self.cache_access_times = manager.dict()  # Track when terms were last accessed
+        self.manager = mp.Manager()
+        self.cache = self.manager.dict()
+        self.term_sets = self.manager.dict()
+        self.processing_terms = self.manager.dict()
+        self.term_locks = self.manager.dict()
+        self.cache_access_times = self.manager.dict()
         
         # Start the background process
-        self.process = mp.Process(target=self._run_background_process)
+        self.process = TermManagerProcess(
+            model_name=self.model_name,
+            task_queue=self.task_queue,
+            result_queue=self.result_queue
+        )
         self.process.start()
         
         # Start result processing thread
@@ -69,6 +163,16 @@ class TermManager:
         # Thread pool for async operations
         self.thread_pool = ThreadPoolExecutor(max_workers=4)
         
+        # Initialize state
+        self.state = {
+            "embeddings": {},
+            "terms": set()
+        }
+        self._load_state()
+        
+        # Register in global registry
+        _active_managers.add(self)
+        
         logger.info(f"TermManager initialized with model {model_name}")
         
     def _process_results(self):
@@ -76,257 +180,247 @@ class TermManager:
         while self.running:
             try:
                 # Get result from queue with timeout
-                result = self.result_queue.get(timeout=1)
+                try:
+                    result = self.result_queue.get(timeout=1)
+                except Empty:
+                    continue
+                except (EOFError, BrokenPipeError):
+                    break
                 
                 if result['type'] == 'shutdown':
-                    logger.info("Result processor received shutdown signal")
                     break
                     
-                elif result['type'] == 'batch_complete':
-                    # Log batch completion
-                    batch_size = result.get('batch_size', 0)
-                    logger.debug(f"Completed processing batch of {batch_size} terms")
+                elif result['type'] == 'embedding':
+                    term = result['term']
+                    embedding = result['embedding']
+                    self.cache[term] = embedding
+                    self.cache_access_times[term] = time.time()
+                    if term in self.processing_terms:
+                        del self.processing_terms[term]
                     
                 elif result['type'] == 'error':
-                    # Log any errors from background process
                     error_msg = result.get('error', 'Unknown error')
-                    logger.error(f"Background process error: {error_msg}")
+                    if self.running:  # Only log if not shutting down
+                        logger.error(f"Background process error: {error_msg}")
                     
-            except Empty:
-                # No results to process, continue waiting
-                continue
             except Exception as e:
-                logger.error(f"Error in result processor: {e}")
+                if self.running:  # Only log if not shutting down
+                    logger.error(f"Error in result processor: {e}")
                 continue
                 
-        logger.info("Result processor shutting down")
-        
-    def _run_background_process(self):
-        """Background process for term processing."""
-        try:
-            # Initialize model in the background process
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            model = SentenceTransformer(self.model_name)
-            model.to(device)
+    def get_embedding(self, term: str) -> Optional[np.ndarray]:
+        """Get embedding for a term."""
+        if term in self.cache:
+            self.cache_access_times[term] = time.time()
+            return self.cache[term]
             
-            while True:
-                try:
-                    # Get task from queue
-                    task = self.task_queue.get(timeout=1)
-                    
-                    if task['type'] == 'shutdown':
-                        self.result_queue.put({'type': 'shutdown'})
-                        break
-                        
-                    elif task['type'] == 'process_terms':
-                        terms = task['terms']
-                        batch = []
-                        
-                        # Process terms in batches
-                        for term in terms:
-                            if term not in self.cache and term not in self.processing_terms:
-                                self.processing_terms[term] = time.time()
-                                batch.append(term)
-                                
-                                if len(batch) >= self.batch_size:
-                                    self._process_batch(batch, model)
-                                    # Notify about batch completion
-                                    self.result_queue.put({
-                                        'type': 'batch_complete',
-                                        'batch_size': len(batch)
-                                    })
-                                    batch = []
-                                    
-                        # Process remaining terms
-                        if batch:
-                            self._process_batch(batch, model)
-                            self.result_queue.put({
-                                'type': 'batch_complete',
-                                'batch_size': len(batch)
-                            })
-                            
-                    elif task['type'] == 'add_term_set':
-                        name, terms = task['name'], task['terms']
-                        self.term_sets[name] = set(terms)
-                        # Pre-process terms in the set
-                        self.task_queue.put({
-                            'type': 'process_terms',
-                            'terms': list(terms)
-                        })
-                        
-                except Empty:
-                    # Clean up stale processing terms
-                    current_time = time.time()
-                    stale_terms = [
-                        term for term, start_time in self.processing_terms.items()
-                        if current_time - start_time > self.processing_timeout
-                    ]
-                    for term in stale_terms:
-                        del self.processing_terms[term]
-                    continue
-                    
-        except Exception as e:
-            # Report error to main process
-            self.result_queue.put({
-                'type': 'error',
-                'error': str(e)
-            })
-            logger.error(f"Background process error: {e}")
-            
-        finally:
-            logger.info("Background process shutting down")
-            
-    def _process_batch(self, batch: List[str], model: SentenceTransformer):
-        """Process a batch of terms to get their embeddings."""
-        try:
-            # Get embeddings using sentence-transformers
-            embeddings = model.encode(batch, convert_to_numpy=True)
-            
-            # Store results
-            current_time = time.time()
-            for term, embedding in zip(batch, embeddings):
-                self.cache[term] = embedding
-                self.cache_access_times[term] = current_time
-                if term in self.processing_terms:
-                    del self.processing_terms[term]
+        if term in self.processing_terms:
+            start_time = self.processing_terms[term]
+            if time.time() - start_time > self.processing_timeout:
+                del self.processing_terms[term]
+            else:
+                return None
                 
-            # Manage cache size using LRU strategy
-            if len(self.cache) > self.cache_size:
-                # Sort by access time and remove oldest
-                sorted_terms = sorted(
-                    self.cache_access_times.items(),
-                    key=lambda x: x[1]
-                )
-                terms_to_remove = sorted_terms[:len(self.cache) - self.cache_size]
-                for term, _ in terms_to_remove:
-                    del self.cache[term]
-                    del self.cache_access_times[term]
-                    
-        except Exception as e:
-            # Report error to main process
-            self.result_queue.put({
-                'type': 'error',
-                'error': str(e)
-            })
-            logger.error(f"Batch processing error: {e}")
-            # Clean up processing status for failed terms
-            for term in batch:
-                if term in self.processing_terms:
-                    del self.processing_terms[term]
-            
-    async def get_embedding_async(self, term: str, timeout: float = None) -> Optional[np.ndarray]:
-        """
-        Get the embedding for a term asynchronously.
-        
-        Args:
-            term: Term to get embedding for
-            timeout: Maximum time to wait for embedding (seconds)
-            
-        Returns:
-            Numpy array of embedding or None if not found/timeout
-        """
-        if timeout is None:
-            timeout = self.processing_timeout
-            
-        start_time = time.time()
-        
-        while True:
-            # Check if term is in cache
-            if term in self.cache:
-                # Update access time
-                self.cache_access_times[term] = time.time()
-                return self.cache[term]
-                
-            # Check if term is being processed
-            if term in self.processing_terms:
-                # Wait a bit and retry
-                await asyncio.sleep(0.1)
-                if time.time() - start_time > timeout:
-                    logger.warning(f"Timeout waiting for term: {term}")
-                    return None
-                continue
-                
-            # Term not found and not being processed
-            self.add_terms([term])
-            await asyncio.sleep(0.1)
-            
-    def get_embedding(self, term: str, timeout: float = None) -> Optional[np.ndarray]:
-        """
-        Get the embedding for a term (synchronous version).
-        
-        Args:
-            term: Term to get embedding for
-            timeout: Maximum time to wait for embedding (seconds)
-            
-        Returns:
-            Numpy array of embedding or None if not found/timeout
-        """
-        loop = asyncio.new_event_loop()
-        try:
-            return loop.run_until_complete(
-                self.get_embedding_async(term, timeout)
-            )
-        finally:
-            loop.close()
-        
-    def add_terms(self, terms: List[str]):
-        """
-        Add terms for processing.
-        
-        Args:
-            terms: List of terms to process
-        """
-        # Filter out terms already in cache or being processed
-        new_terms = [
-            term for term in terms
-            if term not in self.cache and term not in self.processing_terms
-        ]
-        if new_terms:
-            self.task_queue.put({
-                'type': 'process_terms',
-                'terms': new_terms
-            })
-        
-    def add_term_set(self, name: str, terms: Set[str]):
-        """
-        Add a named set of terms.
-        
-        Args:
-            name: Name of the term set
-            terms: Set of terms
-        """
+        self.processing_terms[term] = time.time()
         self.task_queue.put({
-            'type': 'add_term_set',
-            'name': name,
-            'terms': terms
+            'type': 'get_embedding',
+            'term': term
         })
         
-    def get_term_set(self, name: str) -> Set[str]:
-        """
-        Get a named set of terms.
+        return None
+        
+    def get_embeddings(self, terms: List[str], timeout: float = 30.0) -> List[Optional[np.ndarray]]:
+        """Get embeddings for a batch of terms.
         
         Args:
-            name: Name of the term set
+            terms: List of terms to get embeddings for
+            timeout: Maximum time to wait for embeddings
             
         Returns:
-            Set of terms
+            List of embeddings in the same order as terms. None for failed terms.
         """
-        return self.term_sets.get(name, set())
+        results = []
+        start_time = time.time()
+        
+        for term in terms:
+            # Check if we've exceeded timeout
+            if time.time() - start_time > timeout:
+                logger.warning(f"Timeout getting embeddings after {len(results)} terms")
+                break
+                
+            # Try to get embedding with shorter timeout for each term
+            remaining_time = max(1.0, timeout - (time.time() - start_time))
+            embedding = None
+            
+            # First check cache
+            if term in self.cache:
+                embedding = self.cache[term]
+            else:
+                # Request embedding from background process
+                self.task_queue.put({
+                    'type': 'get_embedding',
+                    'term': term
+                })
+                
+                # Wait for result with timeout
+                wait_start = time.time()
+                while time.time() - wait_start < remaining_time:
+                    if term in self.cache:
+                        embedding = self.cache[term]
+                        break
+                    time.sleep(0.1)
+                    
+            results.append(embedding)
+            
+        return results
         
     def shutdown(self):
         """Shutdown the background process and cleanup resources."""
-        self.running = False  # Signal result thread to stop
-        self.task_queue.put({'type': 'shutdown'})
-        self.result_queue.put({'type': 'shutdown'})
+        if not hasattr(self, 'running') or not self.running:
+            return
+            
+        self.running = False
         
-        # Wait for background process and thread to finish
-        if hasattr(self, 'process'):
-            self.process.join()
-        if hasattr(self, 'result_thread'):
-            self.result_thread.join()
+        try:
+            # Save final state
+            self._save_state()
             
-        # Cleanup thread pool
-        if hasattr(self, 'thread_pool'):
-            self.thread_pool.shutdown()
+            # Clean up thread pool
+            if hasattr(self, 'thread_pool'):
+                self.thread_pool.shutdown(wait=False)
             
-        logger.info("TermManager shut down") 
+            # Signal process to stop and close queues
+            try:
+                self.task_queue.put_nowait({'type': 'shutdown'})
+            except:
+                pass
+            
+            # Wait for process with timeout
+            if hasattr(self, 'process'):
+                try:
+                    self.process.join(timeout=2.0)
+                except:
+                    pass
+                if self.process.is_alive():
+                    self.process.terminate()
+                    try:
+                        self.process.join(timeout=1.0)
+                    except:
+                        pass
+                    if self.process.is_alive():
+                        self.process.kill()
+            
+            # Clean up manager
+            if hasattr(self, 'manager'):
+                try:
+                    self.manager.shutdown()
+                except:
+                    pass
+            
+            # Clean up files
+            try:
+                if hasattr(self, 'pid_file'):
+                    self.pid_file.unlink(missing_ok=True)
+            except:
+                pass
+            
+            # Close queues
+            for queue in ['task_queue', 'result_queue']:
+                if hasattr(self, queue):
+                    try:
+                        getattr(self, queue).close()
+                        getattr(self, queue).join_thread()
+                    except:
+                        pass
+            
+        except Exception as e:
+            if not sys.is_finalizing():
+                logger.error(f"Error during shutdown: {e}")
+        
+        finally:
+            # Remove from registry
+            _active_managers.discard(self)
+            
+            # Release resources
+            for attr in ['task_queue', 'result_queue', 'cache', 'term_sets',
+                        'processing_terms', 'term_locks', 'cache_access_times',
+                        'manager', 'process', 'result_thread']:
+                if hasattr(self, attr):
+                    delattr(self, attr)
+    
+    def _load_state(self):
+        """Load state from file."""
+        if self.state_file.exists():
+            with open(self.state_file) as f:
+                state = json.load(f)
+                self.state["embeddings"] = {
+                    term: np.array(embedding)
+                    for term, embedding in state["embeddings"].items()
+                }
+                self.state["terms"] = set(state["terms"])
+                
+    def _save_state(self):
+        """Save state to file."""
+        state = {
+            "embeddings": {
+                term: embedding.tolist()
+                for term, embedding in self.state["embeddings"].items()
+            },
+            "terms": list(self.state["terms"])
+        }
+        with open(self.state_file, "w") as f:
+            json.dump(state, f)
+            
+    def __getstate__(self):
+        """Get state for pickling."""
+        state = self.__dict__.copy()
+        # Remove unpicklable attributes
+        for attr in ['task_queue', 'result_queue', 'manager', 'process',
+                    'result_thread', 'thread_pool']:
+            state.pop(attr, None)
+        return state
+        
+    def __setstate__(self, state):
+        """Set state after unpickling."""
+        self.__dict__.update(state)
+        # Reinitialize multiprocessing components
+        self.__init__(self.model_name)
+        
+    @classmethod
+    def connect(cls, pid: int) -> 'TermManager':
+        """
+        Connect to existing term manager instance.
+        
+        Args:
+            pid: Process ID of existing term manager
+            
+        Returns:
+            Connected TermManager instance
+        """
+        # Find state file
+        cache_dir = Path(tempfile.gettempdir()) / "term_manager"
+        pid_file = cache_dir / "pid.txt"
+        
+        if not pid_file.exists():
+            raise ValueError("No existing term manager found")
+            
+        with open(pid_file) as f:
+            stored_pid = int(f.read().strip())
+            
+        if stored_pid != pid:
+            raise ValueError(f"PID mismatch: {stored_pid} != {pid}")
+            
+        # Create instance without starting new process
+        instance = cls.__new__(cls)
+        instance.cache_dir = cache_dir
+        instance.state_file = cache_dir / "state.json"
+        instance.pid_file = pid_file
+        
+        # Load state
+        instance.state = {
+            "embeddings": {},
+            "terms": set()
+        }
+        instance._load_state()
+        
+        return instance 

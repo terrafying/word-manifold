@@ -24,6 +24,9 @@ dependencies = [
     "click>=8.1.8,<9.0.0",
     "pyyaml>=6.0.1,<7.0.0",
     "tenacity>=8.0.0,<9.0.0",
+    "boto3>=1.35.0,<2.0.0",
+    "ray>=2.7.0,<3.0.0",
+    "zeroconf>=0.131.0,<1.0.0",
 ]
 
 [project.scripts]
@@ -33,6 +36,8 @@ word-manifold-symbolic = "word_manifold.visualization.cli:symbolic"
 word-manifold-tree = "word_manifold.visualization.cli:semantic_tree"
 word-manifold-shapes = "word_manifold.visualization.cli:shapes"
 word-manifold-automata = "word_manifold.visualization.cli:automata"
+word-manifold-ray = "word_manifold.cli.commands.ray_monitor:ray_cli"
+word-manifold-cluster = "word_manifold.cli.commands.ray_cluster:run"
 
 [project.optional-dependencies]
 # Development tools
@@ -43,6 +48,8 @@ dev = [
     "isort>=6.0.1",
     "flake8>=7.2.0",
     "mypy>=1.15.0",
+    "watchdog>=3.0.0",  # For development watching
+    "rich>=14.0.0",  # For test output formatting
 ]
 
 # Machine learning and embeddings
@@ -87,9 +94,17 @@ audio = [
     "librosa>=0.11.0,<1.0.0",
 ]
 
+# Monitoring dependencies
+monitoring = [
+    "prometheus-client>=0.21.0,<1.0.0",
+    "opencensus>=0.11.4,<1.0.0",
+    "opencensus-context>=0.1.3,<1.0.0",
+    "grpcio>=1.71.0,<2.0.0",
+]
+
 # Full installation with all dependencies
 all = [
-    "word-manifold[ml,data,viz,server,audio]",
+    "word-manifold[ml,data,viz,server,audio,monitoring]",
 ]
 
 [tool.black]

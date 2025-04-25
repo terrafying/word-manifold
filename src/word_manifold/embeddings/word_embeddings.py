@@ -1,5 +1,5 @@
 """
-Word Embeddings Module for handling word vector representations.
+Word Embeddings Module with support for local, remote, and Replicate-based operations.
 
 This module provides functionality for loading, managing, and manipulating
 word embeddings, including support for numerological calculations and
@@ -17,6 +17,13 @@ from sentence_transformers import SentenceTransformer
 import gc
 from .term_manager import TermManager
 from .distributed_term_manager import DistributedTermManager
+import requests
+from pathlib import Path
+import json
+import time
+from enum import Enum
+import sys
+from ..core.model_host import ModelHost
 
 # Set environment variable to handle tokenizer parallelism warning
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -30,110 +37,176 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = 'sentence-transformers/all-MiniLM-L6-v2'  # Much smaller model
 BACKUP_MODEL = 'sentence-transformers/paraphrase-MiniLM-L3-v2'  # Even smaller backup
 
+class EmbeddingMode(Enum):
+    """Mode for embedding operations."""
+    LOCAL = "local"
+    REMOTE = "remote"
+    REPLICATE = "replicate"
+
 class WordEmbeddings:
-    """
-    Manages word embeddings with background processing support.
-    """
+    """Manages word embeddings with distributed computation support."""
     
     DEFAULT_MODEL = DEFAULT_MODEL
     BACKUP_MODEL = BACKUP_MODEL
     
+    # Default terms for initialization
+    DEFAULT_TERMS = [
+        # Core concepts
+        "wisdom", "understanding", "knowledge", "truth",
+        "beauty", "harmony", "balance", "unity",
+        
+        # Fundamental pairs
+        "light", "dark",
+        "above", "below",
+        "inner", "outer",
+        "spirit", "matter",
+        
+        # Elements
+        "fire", "water", "air", "earth",
+        
+        # Temporal concepts
+        "time", "space", "motion", "change",
+        "past", "present", "future",
+        
+        # States of being
+        "existence", "consciousness", "awareness",
+        "transformation", "evolution", "growth"
+    ]
+    
     def __init__(
         self,
         model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-        cache_size: int = 10000,
-        distributed: bool = False,
+        num_workers: int = 2,
         ray_address: Optional[str] = None,
-        num_workers: int = 2
+        cache_dir: Optional[Path] = None
     ):
-        """
-        Initialize WordEmbeddings with background processing.
-        
-        Args:
-            model_name: Name of the transformer model to use
-            cache_size: Maximum number of terms to cache
-            distributed: Whether to use distributed processing
-            ray_address: Optional Ray cluster address for distributed processing
-            num_workers: Number of workers for distributed processing
-        """
+        """Initialize word embeddings manager."""
         self.model_name = model_name
+        self.cache_dir = Path(cache_dir) if cache_dir else None
         
-        if distributed:
-            logger.info(f"Initializing distributed term manager with Ray{'@'+ray_address if ray_address else ''}")
-            self.term_manager = DistributedTermManager(
-                model_name=model_name,
-                cache_size=cache_size,
-                num_workers=num_workers,
-                ray_address=ray_address
-            )
-        else:
-            logger.info("Initializing local term manager")
-            self.term_manager = TermManager(
-                model_name=model_name,
-                cache_size=cache_size
-            )
+        # Initialize model host
+        self.model_host = ModelHost(
+            model_name=model_name,
+            num_workers=num_workers,
+            ray_address=ray_address
+        )
+        
+        # Initialize storage
+        self.terms: Dict[str, np.ndarray] = {}
+        
+        # Load cached state if available
+        self._load_state()
+        
+        # Load default terms
+        self.load_terms(self.DEFAULT_TERMS)
+    
+    def load_terms(self, terms: List[str]) -> None:
+        """Load embeddings for terms."""
+        # Filter out already loaded terms
+        new_terms = [t for t in terms if t not in self.terms]
+        if not new_terms:
+            return
             
-    def load_terms(self, terms: List[str]):
-        """
-        Load terms into the embedding space.
+        # Get embeddings from model host
+        embeddings = self.model_host.get_embeddings(new_terms)
+        self.terms.update(embeddings)
         
-        Args:
-            terms: List of terms to load
-        """
-        # Add terms to background processor
-        self.term_manager.add_terms(terms)
-        
-        # Store terms locally
-        self.term_manager.add_term_set('loaded_terms', set(terms))
-        
-    def get_embedding(self, term: str, timeout: Optional[float] = None) -> Optional[np.ndarray]:
-        """
-        Get embedding for a term.
-        
-        Args:
-            term: Term to get embedding for
-            timeout: Optional timeout for distributed processing
+        # Save state if cache directory is set
+        if self.cache_dir:
+            self._save_state()
+    
+    def get_embedding(self, term: str) -> Optional[np.ndarray]:
+        """Get embedding for a term."""
+        if term not in self.terms:
+            self.load_terms([term])
+        return self.terms.get(term)
+    
+    def find_similar_terms(
+        self,
+        term: str,
+        k: int = 5,
+        min_similarity: float = 0.0
+    ) -> List[Tuple[str, float]]:
+        """Find terms similar to the given term."""
+        if not self.terms:
+            return []
             
-        Returns:
-            Numpy array of embedding or None if not found
-        """
-        return self.term_manager.get_embedding(term, timeout=timeout)
+        # Get query embedding
+        query_embedding = self.get_embedding(term)
+        if query_embedding is None:
+            return []
+            
+        # Calculate similarities
+        similarities = []
+        for other_term, other_embedding in self.terms.items():
+            if other_term != term:
+                similarity = np.dot(query_embedding, other_embedding)
+                if similarity >= min_similarity:
+                    similarities.append((other_term, float(similarity)))
         
-    def get_terms(self) -> Set[str]:
-        """
-        Get all loaded terms.
+        # Sort by similarity
+        similarities.sort(key=lambda x: x[1], reverse=True)
+        return similarities[:k]
+    
+    def _load_state(self) -> None:
+        """Load cached state."""
+        if not self.cache_dir:
+            return
+            
+        cache_file = self.cache_dir / f"embeddings_{self.model_name.replace('/', '_')}.npz"
+        if not cache_file.exists():
+            return
+            
+        try:
+            data = np.load(str(cache_file), allow_pickle=True)
+            self.terms = dict(data['terms'].item())
+            logger.info(f"Loaded {len(self.terms)} terms from cache")
+        except Exception as e:
+            logger.warning(f"Failed to load cache: {e}")
+    
+    def _save_state(self) -> None:
+        """Save current state to cache."""
+        if not self.cache_dir:
+            return
+            
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = self.cache_dir / f"embeddings_{self.model_name.replace('/', '_')}.npz"
         
-        Returns:
-            Set of loaded terms
-        """
-        return self.term_manager.get_term_set('loaded_terms')
-        
-    def __del__(self):
-        """Cleanup when object is deleted."""
-        if hasattr(self, 'term_manager'):
-            self.term_manager.shutdown()
+        try:
+            np.savez(
+                str(cache_file),
+                terms=np.array(self.terms, dtype=object)
+            )
+            logger.info(f"Saved {len(self.terms)} terms to cache")
+        except Exception as e:
+            logger.warning(f"Failed to save cache: {e}")
+    
+    def get_stats(self) -> Dict[str, any]:
+        """Get statistics about the embeddings and workers."""
+        stats = {
+            "model_name": self.model_name,
+            "num_terms": len(self.terms),
+            "workers": self.model_host.get_worker_stats()
+        }
+        return stats
+    
+    def shutdown(self) -> None:
+        """Shutdown the embeddings manager."""
+        self._save_state()
+        self.model_host.shutdown()
 
     def _initialize_model(self) -> None:
         """Initialize the transformer model with memory optimization."""
         try:
-            logger.info(f"Loading model: {self.DEFAULT_MODEL}")
-            self.model = SentenceTransformer(self.DEFAULT_MODEL)
-            self.tokenizer = self.model.tokenizer
-            self.embedding_dim = self.model.get_sentence_embedding_dimension()
-            
-            # Force garbage collection after model loading
-            gc.collect()
-            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            if not hasattr(self, 'term_manager') or self.term_manager is None:
+                self._initialize_local()
+                
+            # Model initialization is handled by term_manager
+            self.embedding_dim = 384  # Standard dimension for the default model
             
         except Exception as e:
-            logger.error(f"Error loading model {self.DEFAULT_MODEL}: {str(e)}")
-            logger.info(f"Falling back to {self.BACKUP_MODEL}")
-            self.model = SentenceTransformer(self.BACKUP_MODEL)
-            self.tokenizer = self.model.tokenizer
-            self.embedding_dim = self.model.get_sentence_embedding_dimension()
-            
-            gc.collect()
-            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            logger.error(f"Error initializing model: {str(e)}")
+            raise
     
     def _check_memory_usage(self) -> bool:
         """Check if memory usage is above threshold."""
@@ -146,10 +219,18 @@ class WordEmbeddings:
     
     def _clear_caches(self) -> None:
         """Clear various caches to free memory."""
-        self.embeddings.clear()
+        self.terms.clear()
         gc.collect()
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
     
+    def get_terms(self) -> Set[str]:
+        """Get all currently loaded terms.
+        
+        Returns:
+            Set of all terms that have been loaded
+        """
+        return set(self.terms.keys())
+        
     def get_embeddings(
         self,
         terms: List[str],
@@ -160,56 +241,24 @@ class WordEmbeddings:
         
         Args:
             terms: List of terms to get embeddings for
-            timeout: Optional timeout for distributed processing
+            timeout: Optional timeout for term processing
             
         Returns:
             Dictionary mapping terms to their embeddings
         """
-        if isinstance(self.term_manager, DistributedTermManager):
-            return self.term_manager.get_embeddings_batch(terms, timeout=timeout or 60.0)
-        else:
-            results = {}
-            for term in terms:
-                embedding = self.get_embedding(term)
-                if embedding is not None:
-                    results[term] = embedding
-            return results
-    
+        # Load any terms we don't have yet
+        missing_terms = [t for t in terms if t not in self.terms]
+        if missing_terms:
+            self.load_terms(missing_terms)
+            
+        # Return all requested terms that we have embeddings for
+        return {term: self.terms[term] for term in terms if term in self.terms}
+        
     def get_embedding_dim(self) -> int:
         """Get the dimensionality of the embeddings."""
+        if not hasattr(self, 'embedding_dim'):
+            self._initialize_model()
         return self.embedding_dim
-    
-    def find_similar_terms(self, term: str, n: int = 5, k: Optional[int] = None) -> List[Union[str, Tuple[str, float]]]:
-        """
-        Find similar terms to the given term.
-        
-        Args:
-            term: Term to find similar terms for
-            n: Number of similar terms to return (deprecated, use k instead)
-            k: Number of similar terms to return
-            
-        Returns:
-            List of (term, similarity) tuples
-        """
-        k = k or n  # Support both n and k for backward compatibility
-        
-        if term not in self.terms:
-            return []
-            
-        query_embedding = self.get_embedding(term)
-        if query_embedding is None:
-            return []
-            
-        similarities = []
-        for other_term in self.terms:
-            if other_term == term:
-                continue
-            other_embedding = self.get_embedding(other_term)
-            if other_embedding is not None:
-                similarity = np.dot(query_embedding, other_embedding)
-                similarities.append((other_term, similarity))
-        
-        return sorted(similarities, key=lambda x: x[1], reverse=True)[:k]
     
     def calculate_numerological_value(self, term: str) -> int:
         """Alias for find_numerological_significance."""
@@ -267,6 +316,6 @@ class WordEmbeddings:
         return {
             'embedding': self.get_embedding(term),
             'numerological_value': self.find_numerological_significance(term),
-            'similar_terms': self.find_similar_terms(term, n=5),
+            'similar_terms': self.find_similar_terms(term, k=5),
             'length': len(term)
         }
