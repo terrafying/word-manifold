@@ -1,0 +1,12 @@
+{
+  "type": "vesica_piscis",
+  "frequency": 417.0,
+  "wave_shape": "SAWTOOTH",
+  "modulation_index": 0.7,
+  "rhythm": {
+    "base_duration": 5.0,
+    "depth": "4",
+    "subdivision": 2,
+    "complexity": 0.9
+  }
+}

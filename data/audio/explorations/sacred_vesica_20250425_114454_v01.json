@@ -1,0 +1,12 @@
+{
+  "type": "vesica_piscis",
+  "frequency": 417.0,
+  "wave_shape": "TRIANGLE",
+  "modulation_index": 1.0,
+  "rhythm": {
+    "base_duration": 5.0,
+    "depth": "5",
+    "subdivision": 2,
+    "complexity": 0.8
+  }
+}

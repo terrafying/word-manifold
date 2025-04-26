@@ -6,7 +6,9 @@ for use in ritual transformations and visualizations.
 """
 
 from enum import Enum, auto
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
+import numpy as np
+from ..types import CellType, ManifoldState
 
 class HermeticPrinciple(Enum):
     """The seven hermetic principles from the Kybalion."""
@@ -96,4 +98,89 @@ PRINCIPLE_ENERGY_PATTERNS: Dict[HermeticPrinciple, Dict[str, float]] = {
         'amplitude': 0.85,
         'phase': 0.625
     }
-} 
+}
+
+class TransformationRule:
+    """Base class for semantic transformation rules."""
+    
+    def __init__(self, name: str, description: str):
+        """
+        Initialize the transformation rule.
+        
+        Args:
+            name: Name of the rule
+            description: Description of the rule's effect
+        """
+        self.name = name
+        self.description = description
+        
+    def apply(
+        self,
+        state: ManifoldState,
+        generation: int
+    ) -> ManifoldState:
+        """
+        Apply the transformation rule.
+        
+        Args:
+            state: Current manifold state
+            generation: Current generation number
+            
+        Returns:
+            Updated manifold state
+        """
+        raise NotImplementedError
+        
+class SimilarityRule(TransformationRule):
+    """Rule that emphasizes semantic similarity."""
+    
+    def __init__(self):
+        super().__init__(
+            "similarity",
+            "Emphasizes semantic similarity between related concepts"
+        )
+        
+    def apply(
+        self,
+        state: ManifoldState,
+        generation: int
+    ) -> ManifoldState:
+        """Apply similarity transformation."""
+        # Implementation here
+        return state
+        
+class ContrastRule(TransformationRule):
+    """Rule that emphasizes semantic contrast."""
+    
+    def __init__(self):
+        super().__init__(
+            "contrast",
+            "Emphasizes semantic contrast between different concepts"
+        )
+        
+    def apply(
+        self,
+        state: ManifoldState,
+        generation: int
+    ) -> ManifoldState:
+        """Apply contrast transformation."""
+        # Implementation here
+        return state
+        
+class EvolutionRule(TransformationRule):
+    """Rule that guides semantic evolution."""
+    
+    def __init__(self):
+        super().__init__(
+            "evolution",
+            "Guides semantic evolution based on context"
+        )
+        
+    def apply(
+        self,
+        state: ManifoldState,
+        generation: int
+    ) -> ManifoldState:
+        """Apply evolution transformation."""
+        # Implementation here
+        return state 

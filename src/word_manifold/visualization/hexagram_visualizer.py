@@ -10,15 +10,53 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, Circle, PathPatch
 from matplotlib.path import Path
 import matplotlib.colors as mcolors
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Optional, Tuple, Union, Any
 import logging
+from pathlib import Path
+import requests
 
 from ..automata.hexagram_rules import Hexagram, Line, HexagramRule
 from ..manifold.vector_manifold import VectorManifold
+from .base import VisualizationRenderer, VisualizationData
 
 logger = logging.getLogger(__name__)
 
-class HexagramVisualizer:
+@dataclass
+class HexagramPlotData(VisualizationData):
+    """Data container for hexagram visualization."""
+    from_hexagram: Optional[Hexagram] = None
+    to_hexagram: Optional[Hexagram] = None
+    changing_lines: List[int] = None
+    rule: Optional[HexagramRule] = None
+    manifold: Optional[VectorManifold] = None
+    phase: float = 0.0
+    show_nuclear: bool = False
+    
+    def to_plot_data(self) -> Dict[str, Any]:
+        """Convert to plottable format."""
+        return {
+            'from_hexagram': self.from_hexagram.to_dict() if self.from_hexagram else None,
+            'to_hexagram': self.to_dict() if self.to_hexagram else None,
+            'changing_lines': self.changing_lines or [],
+            'rule': self.rule.to_dict() if self.rule else None,
+            'phase': self.phase,
+            'show_nuclear': self.show_nuclear
+        }
+    
+    def get_color_map(self) -> Dict[str, str]:
+        """Get color mapping."""
+        return HexagramVisualizer.COLORS
+        
+    def get_labels(self) -> Dict[int, str]:
+        """Get labels for visualization elements."""
+        labels = {}
+        if self.from_hexagram:
+            labels[0] = f"Hexagram {self.from_hexagram.number}: {self.from_hexagram.name}"
+        if self.to_hexagram:
+            labels[1] = f"Hexagram {self.to_hexagram.number}: {self.to_hexagram.name}"
+        return labels
+
+class HexagramVisualizer(VisualizationRenderer):
     """Visualizer for hexagram-based transformations."""
     
     # Visual constants
@@ -39,6 +77,7 @@ class HexagramVisualizer:
     
     def __init__(self, size: Tuple[int, int] = (800, 600), dpi: int = 100):
         """Initialize the visualizer."""
+        super().__init__()
         self.size = size
         self.dpi = dpi
         self.fig = None
@@ -253,4 +292,120 @@ class HexagramVisualizer:
         
         ax.legend()
         ax.set_title('Manifold Transformation')
-        ax.grid(True, alpha=0.3) 
+        ax.grid(True, alpha=0.3)
+
+    def _create_plot(
+        self,
+        data: HexagramPlotData,
+        title: Optional[str] = None
+    ) -> plt.Figure:
+        """Create the hexagram visualization."""
+        plot_data = data.to_plot_data()
+        
+        # Create figure
+        self.fig, self.ax = plt.subplots(
+            figsize=(self.size[0]/self.dpi, self.size[1]/self.dpi),
+            dpi=self.dpi
+        )
+        self.ax.set_facecolor(self.COLORS['background'])
+        
+        if plot_data['from_hexagram'] and plot_data['to_hexagram']:
+            # Draw transformation
+            self.draw_hexagram(
+                Hexagram.from_dict(plot_data['from_hexagram']),
+                position=(-2, 0),
+                changing_lines=plot_data['changing_lines']
+            )
+            
+            self.draw_hexagram(
+                Hexagram.from_dict(plot_data['to_hexagram']),
+                position=(2, 0)
+            )
+            
+            # Draw transformation arrows
+            for i in plot_data['changing_lines']:
+                y = i * self.LINE_SPACING
+                self.ax.arrow(
+                    -1, y, 2, 0,
+                    head_width=0.1,
+                    head_length=0.2,
+                    fc=self.COLORS['transform'],
+                    ec=self.COLORS['transform'],
+                    alpha=0.6
+                )
+        elif plot_data['rule']:
+            # Draw rule visualization
+            rule = HexagramRule.from_dict(plot_data['rule'])
+            self.visualize_rule_application(rule, plot_data.get('manifold'))
+        else:
+            # Draw single hexagram
+            self.draw_hexagram(
+                Hexagram.from_dict(plot_data['from_hexagram']),
+                show_nuclear=plot_data['show_nuclear']
+            )
+        
+        if title:
+            self.fig.suptitle(title)
+            
+        # Set limits and remove axes
+        self.ax.set_xlim(-3, 3)
+        self.ax.set_ylim(-1.5, 2)
+        self.ax.axis('off')
+        
+        return self.fig
+
+    def render_local(
+        self,
+        data: Dict[str, Any],
+        output_path: Path,
+        title: Optional[str] = None
+    ) -> Path:
+        """Render visualization locally.
+        
+        Args:
+            data: Visualization data dictionary
+            output_path: Path to save the visualization
+            title: Optional title for the visualization
+            
+        Returns:
+            Path to the saved visualization file
+        """
+        plot_data = HexagramPlotData(**data)
+        fig = self._create_plot(plot_data, title)
+        fig.savefig(output_path, dpi=self.dpi, bbox_inches='tight')
+        plt.close(fig)
+        return output_path
+
+    def render_server(
+        self,
+        data: Dict[str, Any],
+        server_url: str,
+        endpoint: str = '/api/visualize'
+    ) -> Dict[str, Any]:
+        """Render visualization using server.
+        
+        Args:
+            data: Visualization data dictionary
+            server_url: URL of the visualization server
+            endpoint: API endpoint for visualization
+            
+        Returns:
+            Server response containing visualization data
+        """
+        plot_data = HexagramPlotData(**data)
+        
+        # Convert plot data to server format
+        server_data = {
+            'type': 'hexagram',
+            'data': plot_data.to_plot_data(),
+            'metadata': {
+                'colors': plot_data.get_color_map(),
+                'labels': plot_data.get_labels()
+            }
+        }
+        
+        # Send data to server
+        response = requests.post(f"{server_url.rstrip('/')}{endpoint}", json=server_data)
+        response.raise_for_status()
+        
+        return response.json() 

@@ -1,0 +1,14 @@
+{
+  "audio": {
+    "amplitude": 0.4899518187944498,
+    "dominant_frequency": 0.009795918367346938
+  },
+  "visual": {
+    "width": 80,
+    "height": 40,
+    "density": 0.5939710912766699,
+    "style": "mystical",
+    "symmetry": 8,
+    "layers": 5
+  }
+}

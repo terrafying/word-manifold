@@ -1,62 +1,44 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "word-manifold"
-version = "0.1.1"
+version = "0.1.0"
+description = "Semantic manifold analysis with distributed inference"
 authors = [
-    { name = "Your Name", email = "your.email@example.com" },
+    {name = "Your Name", email = "your.email@example.com"}
 ]
-description = "A package for embedding and analyzing text in semantic manifolds"
-readme = "README.md"
 requires-python = ">=3.9"
- 
+readme = "README.md"
+license = {text = "MIT"}
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-# Core dependencies required for basic functionality
+
 dependencies = [
+    # Core dependencies
     "numpy>=2.0.2,<3.0.0",
     "requests>=2.32.3,<3.0.0",
     "click>=8.1.8,<9.0.0",
     "pyyaml>=6.0.1,<7.0.0",
     "tenacity>=8.0.0,<9.0.0",
-    "boto3>=1.35.0,<2.0.0",
-    "ray>=2.7.0,<3.0.0",
-    "zeroconf>=0.131.0,<1.0.0",
+    "z3-solver>=4.12.0,<5.0.0",
+    "llama-cpp-python>=0.2.0,<1.0.0",
+    "sentence-transformers>=2.5.1,<3.0.0",
+    "llama-stack-client>=0.1.0,<1.0.0",
+    "ray>=2.44.1",
+    "matplotlib>=3.9.4,<4.0.0",
+    "spacy>=3.7.4,<4.0.0",
 ]
-
-[project.scripts]
-word-manifold = "word_manifold.visualization.cli:cli"
-word-manifold-visualize = "word_manifold.visualization.cli:visualize"
-word-manifold-symbolic = "word_manifold.visualization.cli:symbolic"
-word-manifold-tree = "word_manifold.visualization.cli:semantic_tree"
-word-manifold-shapes = "word_manifold.visualization.cli:shapes"
-word-manifold-automata = "word_manifold.visualization.cli:automata"
-word-manifold-ray = "word_manifold.cli.commands.ray_monitor:ray_cli"
-word-manifold-cluster = "word_manifold.cli.commands.ray_cluster:run"
 
 [project.optional-dependencies]
-# Development tools
-dev = [
-    "pytest>=8.3.5",
-    "pytest-cov>=6.1.1",
-    "black>=25.1.0",
-    "isort>=6.0.1",
-    "flake8>=7.2.0",
-    "mypy>=1.15.0",
-    "watchdog>=3.0.0",  # For development watching
-    "rich>=14.0.0",  # For test output formatting
-]
-
 # Machine learning and embeddings
 ml = [
     "torch>=2.6.0,<3.0.0",
     "transformers>=4.51.3,<5.0.0",
-    "spacy>=3.7.4,<4.0.0",
     "scikit-learn>=1.6.1,<2.0.0",
     "sentence-transformers>=2.5.1,<3.0.0",
     "safetensors>=0.5.3,<1.0.0",
@@ -78,53 +60,41 @@ viz = [
     "plotly>=6.0.1,<7.0.0",
     "networkx>=3.2.1,<4.0.0",
     "dash>=3.0.3,<4.0.0",
-    "hypertools @ git+https://github.com/terrafying/hypertools.git",
+    "hypertools>=0.8.0",
 ]
 
-# Server dependencies
-server = [
-    "flask>=3.0.3,<4.0.0",
-    "flask-cors>=4.0.0,<5.0.0",
-    "tenacity>=8.0.0,<9.0.0",
-    "psutil>=5.9.0,<6.0.0",
-]
-
-# Audio processing
-audio = [
-    "librosa>=0.11.0,<1.0.0",
-]
-
-# Monitoring dependencies
-monitoring = [
-    "prometheus-client>=0.21.0,<1.0.0",
-    "opencensus>=0.11.4,<1.0.0",
-    "opencensus-context>=0.1.3,<1.0.0",
-    "grpcio>=1.71.0,<2.0.0",
-]
-
-# Image synthesis dependencies
-synthesis = [
-    "torch>=2.6.0,<3.0.0",
-    "torchvision>=0.15.0,<1.0.0",
-    "diffusers>=0.21.0,<1.0.0",
-    "transformers>=4.51.3,<5.0.0",
-    "opencv-python>=4.8.0,<5.0.0",
+# Development dependencies
+dev = [
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.5.0",
+    "pylint>=3.0.0",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
 ]
 
 # Full installation with all dependencies
 all = [
-    "word-manifold[ml,data,viz,server,audio,monitoring,synthesis]",
+    "word-manifold[ml,data,viz]",
 ]
 
+[project.scripts]
+word-manifold = "word_manifold.cli:cli"
+word-manifold-explore = "word_manifold.cli:explore"
+word-manifold-visualize = "word_manifold.cli:visualize"
+word-manifold-agent = "word_manifold.cli:agent_explore"
+word-manifold-agent-path = "word_manifold.cli:agent_path"
+
 [tool.black]
-line-length = 100
-target-version = ['py39']
+line-length = 88
+target-version = ["py39"]
 include = '\.pyi?$'
 
 [tool.isort]
 profile = "black"
 multi_line_output = 3
-line_length = 100
+line_length = 88
 
 [tool.mypy]
 python_version = "3.9"
@@ -132,18 +102,10 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
-check_untyped_defs = true
-disallow_untyped_decorators = true
-no_implicit_optional = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-warn_no_return = true
-warn_unreachable = true
-
-[tool.setuptools.packages.find]
-where = ["src"]
 
 [tool.pytest.ini_options]
-addopts = "--cov=word_manifold --cov-report=term-missing"
+asyncio_mode = "auto"
 testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=word_manifold --cov-report=term-missing"
 

@@ -1,0 +1,112 @@
+head_node:
+  node_ip: "192.168.1.191"  # Change to actual IP in production
+  redis_port: 6379
+  redis_password: default_password  # Change in production
+  resources:
+    CPU: 4
+    GPU: 0
+
+# Worker nodes configuration
+worker_nodes:
+  - node_ip: "192.168.1.172"
+    resources:
+      CPU: 2
+      GPU: 0
+#   - node_ip: 127.0.0.1
+#     resources:
+#       CPU: 2
+#       GPU: 0
+
+# System configuration
+system_config:
+  object_store_memory: 1000000000  # 1GB
+  plasma_directory: /tmp
+  memory_monitor_refresh_ms: 100
+  object_spilling_config:
+    spilling_dir: "/tmp/ray/spill"
+    spilling_threshold: 0.8  # Start spilling at 80% capacity
+
+# Runtime environment
+runtime_env:
+  working_dir: .
+  pip:
+    - numpy>=1.20.0
+    - scipy>=1.7.0
+    - scikit-learn>=0.24.0
+    - zeroconf>=0.38.0
+    - librosa>=0.11.0
+    - soundfile>=0.13.0
+  env_vars:
+    PYTHONPATH: ${PYTHONPATH}:${PWD}/src
+
+# Service discovery configuration
+service_discovery:
+  enabled: true
+  service_type: _wordmanifold._tcp.local.
+  ttl: 60  # Time to live in seconds
+  refresh_interval: 30  # Service refresh interval in seconds
+
+# Visualization worker configuration
+visualization_workers:
+  min_workers: 2
+  max_workers: 8
+  initial_workers: 4
+  worker_startup_timeout: 60
+  idle_timeout: 300
+  max_tasks_per_worker: 100
+  resources_per_worker:
+    CPU: 1
+    memory: 2000000000  # 2GB
+
+# Monitoring and metrics
+monitoring:
+  enabled: true
+  metrics_export_port: 8080
+  prometheus_enabled: true
+  dashboard_enabled: true
+  dashboard_port: 8265
+  log_to_driver: true
+  logging_level: INFO
+
+# Network configuration
+network:
+  timeout_ms: 10000
+  retries: 3
+  backoff_factor: 2
+  max_retries: 5
+
+# Cluster configuration
+num_cpus: 8  # Adjust based on available CPU cores
+num_gpus: 0  # Set to available GPUs if any
+memory: 16000000000  # 16GB memory limit
+
+# Performance tuning
+temp_dir: "/tmp/ray"  # Location for temporary files
+
+# Logging configuration
+logging_level: "WARNING"
+
+# Task configuration
+max_task_retries: 3
+task_retry_delay_ms: 100
+
+# Actor configuration
+actor_creation_batch_size: 1000
+max_pending_actor_reqs: 1000
+
+# Resource configuration
+resources:
+  custom_resource1: 1.0
+
+# Redis configuration
+redis_max_memory: 0  # Unlimited
+redis_max_clients: 10000
+
+# Networking
+node_ip_address: "127.0.0.1"  # Change for distributed setup
+dashboard_host: "127.0.0.1"
+dashboard_port: 8265
+
+# Security (optional)
+# ssl_cert_path: "/path/to/cert"
+# ssl_key_path: "/path/to/key"

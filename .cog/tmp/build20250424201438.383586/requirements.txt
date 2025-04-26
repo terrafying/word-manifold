@@ -1,0 +1,11 @@
+torch==2.7.0
+numpy==2.2.5
+pandas==2.2.3
+plotly==6.0.1
+scikit-learn==1.6.1
+sentence-transformers==4.1.0
+spacy==3.8.5
+networkx==3.4.2
+matplotlib==3.10.1
+hdbscan==0.8.40
+umap-learn==0.5.7

@@ -1,29 +1,66 @@
-# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
-*.pyc
-*.pyo
-*.pyd
-*.pyw
-*.pyz
-*.pywz
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
 *.so
-*.egg
-*.egg-info/
-*.eggs/
-dist/
+.Python
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.env
+.venv
+env/
 venv/
-.venv/
-**/venv/**
-**/.venv/**
-**/__pycache__/**
-.pytest_cache/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Project specific
+outputs/
+*.log
+*.npy
+*.npz
+*.pkl
+*.h5
+*.pt
+*.pth
+*.onnx
+*.bin
+*.gguf
+
+# Test outputs
 .coverage
 htmlcov/
+.pytest_cache/
 .tox/
-.mypy_cache/
-.DS_Store
-visualizations/
-*.log
-data/
-.vscode/
-logs/
+coverage.xml
+*.cover
+
+# Documentation
+docs/_build/
+site/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~

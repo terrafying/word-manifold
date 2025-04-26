@@ -1,0 +1,37 @@
+{
+  "fibonacci": {
+    "amplitude": 0.022796060067838655,
+    "frequency": 19132.0,
+    "harmonic_content": 0.0014380436461234253
+  },
+  "golden": {
+    "amplitude": 0.02173976955448655,
+    "frequency": 224.0,
+    "harmonic_content": 0.002225738918749858
+  },
+  "euclidean": {
+    "amplitude": 0.040825040400424804,
+    "frequency": 19135.0,
+    "harmonic_content": 0.0007811904743338236
+  },
+  "spiral": {
+    "amplitude": 0.38845586516832703,
+    "frequency": 0.0,
+    "harmonic_content": 0.03329435719104026
+  },
+  "fib_golden": {
+    "amplitude": 0.0167643886628828,
+    "frequency": 19133.0,
+    "harmonic_content": 0.0009679940533746654
+  },
+  "spiral_euclidean": {
+    "amplitude": 0.388849694358002,
+    "frequency": 0.0,
+    "harmonic_content": 0.028680783124327664
+  },
+  "modulated": {
+    "amplitude": 0.007739666676197049,
+    "frequency": 19812.0,
+    "harmonic_content": 0.00020812052710134863
+  }
+}

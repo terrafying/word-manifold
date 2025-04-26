@@ -1,0 +1,62 @@
+{
+  "fibonacci": {
+    "amplitude": NaN,
+    "frequency": 0.0,
+    "harmonic_content": 0.0
+  },
+  "golden": {
+    "amplitude": NaN,
+    "frequency": 0.0,
+    "harmonic_content": 0.0
+  },
+  "euclidean": {
+    "amplitude": 0.040825040400424804,
+    "frequency": 19135.0,
+    "harmonic_content": 0.0007811904743338236
+  },
+  "spiral": {
+    "amplitude": 0.38845586516832703,
+    "frequency": 0.0,
+    "harmonic_content": 0.03329435719104026
+  },
+  "fib_golden": {
+    "amplitude": NaN,
+    "frequency": 0.0,
+    "harmonic_content": 0.0
+  },
+  "spiral_euclidean": {
+    "amplitude": 0.38855045997232907,
+    "frequency": 0.0,
+    "harmonic_content": 0.03128740692134925
+  },
+  "fib_golden_delay": {
+    "amplitude": NaN,
+    "frequency": 0.0,
+    "harmonic_content": 0.0
+  },
+  "spiral_euclidean_delay": {
+    "amplitude": 0.3868017633015837,
+    "frequency": 0.0,
+    "harmonic_content": 0.0314446476248646
+  },
+  "harmonic_base": {
+    "amplitude": 0.3822591487809955,
+    "frequency": 432.0,
+    "harmonic_content": 0.4564050059812844
+  },
+  "harmonic_rhythm": {
+    "amplitude": NaN,
+    "frequency": 0.0,
+    "harmonic_content": 0.0
+  },
+  "harmonic_delay": {
+    "amplitude": NaN,
+    "frequency": 0.0,
+    "harmonic_content": 0.0
+  },
+  "modulated": {
+    "amplitude": NaN,
+    "frequency": 0.0,
+    "harmonic_content": 0.0
+  }
+}

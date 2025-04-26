@@ -44,7 +44,7 @@ class EmbeddingMode(Enum):
     REPLICATE = "replicate"
 
 class WordEmbeddings:
-    """Manages word embeddings with distributed computation support."""
+    """Manages word embeddings and their analysis."""
     
     DEFAULT_MODEL = DEFAULT_MODEL
     BACKUP_MODEL = BACKUP_MODEL
@@ -75,51 +75,131 @@ class WordEmbeddings:
     
     def __init__(
         self,
-        model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-        num_workers: int = 2,
-        ray_address: Optional[str] = None,
-        cache_dir: Optional[Path] = None
+        model_name: str = "all-MiniLM-L6-v2",
+        dimension: int = 768
     ):
-        """Initialize word embeddings manager."""
-        self.model_name = model_name
-        self.cache_dir = Path(cache_dir) if cache_dir else None
+        """
+        Initialize the word embeddings manager.
         
-        # Initialize model host
-        self.model_host = ModelHost(
-            model_name=model_name,
-            num_workers=num_workers,
-            ray_address=ray_address
+        Args:
+            model_name: Name of the sentence transformer model
+            dimension: Dimension of the embedding space
+        """
+        self.model_name = model_name
+        self.dimension = dimension
+        self.model = SentenceTransformer(model_name)
+        self.embeddings: Dict[str, np.ndarray] = {}
+        
+    def get_embedding(self, word: str) -> np.ndarray:
+        """
+        Get the embedding for a word.
+        
+        Args:
+            word: Word to get embedding for
+            
+        Returns:
+            Embedding vector
+        """
+        if word not in self.embeddings:
+            self.embeddings[word] = self.model.encode([word])[0]
+        return self.embeddings[word]
+        
+    def get_embeddings(self, words: List[str]) -> Dict[str, np.ndarray]:
+        """
+        Get embeddings for multiple words.
+        
+        Args:
+            words: List of words to get embeddings for
+            
+        Returns:
+            Dictionary mapping words to their embeddings
+        """
+        embeddings = {}
+        for word in words:
+            embeddings[word] = self.get_embedding(word)
+        return embeddings
+        
+    def compute_similarity(
+        self,
+        word1: str,
+        word2: str
+    ) -> float:
+        """
+        Compute similarity between two words.
+        
+        Args:
+            word1: First word
+            word2: Second word
+            
+        Returns:
+            Cosine similarity
+        """
+        vec1 = self.get_embedding(word1)
+        vec2 = self.get_embedding(word2)
+        return np.dot(vec1, vec2) / (
+            np.linalg.norm(vec1) * np.linalg.norm(vec2)
         )
         
-        # Initialize storage
-        self.terms: Dict[str, np.ndarray] = {}
+    def find_nearest_neighbors(
+        self,
+        word: str,
+        k: int = 5
+    ) -> List[Tuple[str, float]]:
+        """
+        Find k nearest neighbors of a word.
         
-        # Load cached state if available
-        self._load_state()
+        Args:
+            word: Target word
+            k: Number of neighbors to find
+            
+        Returns:
+            List of (word, similarity) tuples
+        """
+        vec = self.get_embedding(word)
+        similarities = []
         
-        # Load default terms
-        self.load_terms(self.DEFAULT_TERMS)
+        for other_word, other_vec in self.embeddings.items():
+            if other_word != word:
+                sim = np.dot(vec, other_vec) / (
+                    np.linalg.norm(vec) * np.linalg.norm(other_vec)
+                )
+                similarities.append((other_word, sim))
+                
+        similarities.sort(key=lambda x: x[1], reverse=True)
+        return similarities[:k]
+        
+    def save_embeddings(self, file_path: str):
+        """
+        Save embeddings to a file.
+        
+        Args:
+            file_path: Path to save embeddings
+        """
+        np.save(file_path, self.embeddings)
+        
+    def load_embeddings(self, file_path: str):
+        """
+        Load embeddings from a file.
+        
+        Args:
+            file_path: Path to load embeddings from
+        """
+        self.embeddings = np.load(file_path, allow_pickle=True).item()
     
     def load_terms(self, terms: List[str]) -> None:
         """Load embeddings for terms."""
         # Filter out already loaded terms
-        new_terms = [t for t in terms if t not in self.terms]
+        new_terms = [t for t in terms if t not in self.embeddings]
         if not new_terms:
             return
             
-        # Get embeddings from model host
-        embeddings = self.model_host.get_embeddings(new_terms)
-        self.terms.update(embeddings)
+        # Get embeddings from model
+        embeddings = self.get_embeddings(new_terms)
+        self.embeddings.update(embeddings)
         
         # Save state if cache directory is set
         if self.cache_dir:
             self._save_state()
-    
-    def get_embedding(self, term: str) -> Optional[np.ndarray]:
-        """Get embedding for a term."""
-        if term not in self.terms:
-            self.load_terms([term])
-        return self.terms.get(term)
     
     def find_similar_terms(
         self,
@@ -128,7 +208,7 @@ class WordEmbeddings:
         min_similarity: float = 0.0
     ) -> List[Tuple[str, float]]:
         """Find terms similar to the given term."""
-        if not self.terms:
+        if not self.embeddings:
             return []
             
         # Get query embedding
@@ -138,7 +218,7 @@ class WordEmbeddings:
             
         # Calculate similarities
         similarities = []
-        for other_term, other_embedding in self.terms.items():
+        for other_term, other_embedding in self.embeddings.items():
             if other_term != term:
                 similarity = np.dot(query_embedding, other_embedding)
                 if similarity >= min_similarity:
@@ -159,8 +239,8 @@ class WordEmbeddings:
             
         try:
             data = np.load(str(cache_file), allow_pickle=True)
-            self.terms = dict(data['terms'].item())
-            logger.info(f"Loaded {len(self.terms)} terms from cache")
+            self.embeddings = dict(data['embeddings'].item())
+            logger.info(f"Loaded {len(self.embeddings)} terms from cache")
         except Exception as e:
             logger.warning(f"Failed to load cache: {e}")
     
@@ -175,9 +255,9 @@ class WordEmbeddings:
         try:
             np.savez(
                 str(cache_file),
-                terms=np.array(self.terms, dtype=object)
+                embeddings=np.array(self.embeddings, dtype=object)
             )
-            logger.info(f"Saved {len(self.terms)} terms to cache")
+            logger.info(f"Saved {len(self.embeddings)} terms to cache")
         except Exception as e:
             logger.warning(f"Failed to save cache: {e}")
     
@@ -185,7 +265,7 @@ class WordEmbeddings:
         """Get statistics about the embeddings and workers."""
         stats = {
             "model_name": self.model_name,
-            "num_terms": len(self.terms),
+            "num_terms": len(self.embeddings),
             "workers": self.model_host.get_worker_stats()
         }
         return stats
@@ -219,7 +299,7 @@ class WordEmbeddings:
     
     def _clear_caches(self) -> None:
         """Clear various caches to free memory."""
-        self.terms.clear()
+        self.embeddings.clear()
         gc.collect()
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
     
@@ -229,30 +309,7 @@ class WordEmbeddings:
         Returns:
             Set of all terms that have been loaded
         """
-        return set(self.terms.keys())
-        
-    def get_embeddings(
-        self,
-        terms: List[str],
-        timeout: Optional[float] = None
-    ) -> Dict[str, np.ndarray]:
-        """
-        Get embeddings for multiple terms.
-        
-        Args:
-            terms: List of terms to get embeddings for
-            timeout: Optional timeout for term processing
-            
-        Returns:
-            Dictionary mapping terms to their embeddings
-        """
-        # Load any terms we don't have yet
-        missing_terms = [t for t in terms if t not in self.terms]
-        if missing_terms:
-            self.load_terms(missing_terms)
-            
-        # Return all requested terms that we have embeddings for
-        return {term: self.terms[term] for term in terms if term in self.terms}
+        return set(self.embeddings.keys())
         
     def get_embedding_dim(self) -> int:
         """Get the dimensionality of the embeddings."""

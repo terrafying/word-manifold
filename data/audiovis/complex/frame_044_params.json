@@ -1,0 +1,15 @@
+{
+  "index": 44,
+  "params": {
+    "width": 120,
+    "height": 60,
+    "density": 0.591137707233429,
+    "style": "mystical",
+    "symmetry": 8,
+    "layers": 7
+  },
+  "audio_features": {
+    "amplitude": 0.4852294921875,
+    "dominant_frequency": 0.009795918367346938
+  }
+}

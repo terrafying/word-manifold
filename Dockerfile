@@ -15,15 +15,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install poetry for dependency management
-RUN curl -sSL https://install.python-poetry.org | python3 -
+# Install uv for dependency management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Copy dependency files
-COPY pyproject.toml poetry.lock ./
+COPY pyproject.toml ./
 
 # Install dependencies
-RUN poetry config virtualenvs.create false \
-    && poetry install --no-dev --no-interaction --no-ansi
+RUN uv pip install ".[all]"
 
 # Copy application code
 COPY src/ ./src/
@@ -37,4 +36,4 @@ USER appuser
 EXPOSE 5000
 
 # Run the application
-CMD ["poetry", "run", "word-manifold", "server", "start", "--host", "0.0.0.0"] 
+CMD ["word-manifold", "server", "start", "--host", "0.0.0.0"] 

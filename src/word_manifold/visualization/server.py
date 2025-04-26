@@ -8,6 +8,7 @@ term operations and provides endpoints for visualization generation.
 
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
+from flask_socketio import SocketIO, emit
 import logging
 import numpy as np
 from typing import Dict, Any, List, Optional
@@ -18,6 +19,8 @@ import tempfile
 import ray
 from functools import wraps
 import time
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 from word_manifold.embeddings.word_embeddings import WordEmbeddings
 from word_manifold.visualization.engines.timeseries import TimeSeriesEngine, PatternType
@@ -71,9 +74,10 @@ class VisualizationServer:
         # Initialize worker pool
         self.worker_pool = WorkerPool(num_workers)
         
-        # Initialize Flask app
+        # Initialize Flask app with SocketIO
         self.app = Flask(__name__)
         CORS(self.app)
+        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
         
         # Initialize embeddings with default terms
         self.embeddings = WordEmbeddings(load_default_terms=True)
@@ -90,13 +94,17 @@ class VisualizationServer:
         self.last_update: Dict[str, datetime] = {}
         self.CACHE_DURATION = timedelta(hours=1)
         
-        # Register routes
+        # Active visualization sessions
+        self.active_sessions: Dict[str, Dict[str, Any]] = {}
+        
+        # Register routes and WebSocket handlers
         self._register_routes()
+        self._register_socket_handlers()
         
         # Configure autoscaling if using cloud
         if use_cloud:
             self.cloud_manager.setup_autoscaling(self.metrics_collector)
-        
+    
     def _register_routes(self):
         """Register Flask routes with Ray worker handling and metrics."""
         
@@ -165,30 +173,136 @@ class VisualizationServer:
             logger.error(f"Error processing visualization: {e}")
             return jsonify({'error': str(e)}), 500
     
-    def start(self):
-        """Start the visualization server."""
-        try:
-            # Register service with Bonjour
-            ray.get(self.registry.register_service.remote(
-                'visualization_server',
-                self.port,
-                {'version': '1.0'}
-            ))
+    def _register_socket_handlers(self):
+        """Register WebSocket event handlers."""
+        
+        @self.socketio.on('connect')
+        def handle_connect():
+            """Handle client connection."""
+            session_id = request.sid
+            self.active_sessions[session_id] = {
+                'start_time': datetime.now(),
+                'last_update': datetime.now(),
+                'visualizations': {}
+            }
+            emit('connected', {'session_id': session_id})
+        
+        @self.socketio.on('disconnect')
+        def handle_disconnect():
+            """Handle client disconnection."""
+            session_id = request.sid
+            if session_id in self.active_sessions:
+                del self.active_sessions[session_id]
+        
+        @self.socketio.on('visualization_request')
+        def handle_visualization_request(data):
+            """Handle real-time visualization request."""
+            session_id = request.sid
+            if session_id not in self.active_sessions:
+                emit('error', {'message': 'Invalid session'})
+                return
             
-            # Start Flask server
-            self.app.run(host=self.host, port=self.port)
+            try:
+                # Process visualization request
+                result = self._process_visualization_request(data)
+                
+                # Update session
+                self.active_sessions[session_id]['last_update'] = datetime.now()
+                self.active_sessions[session_id]['visualizations'][data.get('id')] = result
+                
+                # Emit result
+                emit('visualization_update', result)
+                
+            except Exception as e:
+                logger.error(f"Error processing visualization request: {e}")
+                emit('error', {'message': str(e)})
+        
+        @self.socketio.on('visualization_update')
+        def handle_visualization_update(data):
+            """Handle visualization parameter updates."""
+            session_id = request.sid
+            if session_id not in self.active_sessions:
+                emit('error', {'message': 'Invalid session'})
+                return
             
-        except Exception as e:
-            logger.error(f"Failed to start server: {e}")
-            raise
-        finally:
-            # Cleanup on shutdown
-            if ray.is_initialized():
-                ray.get(self.metrics_exporter.stop.remote())
-                ray.get(self.registry.shutdown.remote())
-                if self.use_cloud:
-                    self.cloud_manager.shutdown()
-                ray.shutdown()
+            try:
+                # Update visualization parameters
+                result = self._update_visualization(data)
+                
+                # Emit updated visualization
+                emit('visualization_update', result)
+                
+            except Exception as e:
+                logger.error(f"Error updating visualization: {e}")
+                emit('error', {'message': str(e)})
+    
+    def _process_visualization_request(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Process a visualization request.
+        
+        Args:
+            data: Visualization request data
+            
+        Returns:
+            Processed visualization data
+        """
+        # Get worker
+        worker = self.worker_pool.get_available_worker()
+        if worker is None:
+            raise RuntimeError("No workers available")
+        
+        # Process request
+        result = ray.get(worker.process_visualization.remote(data))
+        
+        # Update metrics
+        ray.get(self.metrics_collector.record_request.remote(
+            time.time() - self.active_sessions[request.sid]['start_time'].timestamp()
+        ))
+        
+        return result
+    
+    def _update_visualization(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update visualization parameters.
+        
+        Args:
+            data: Update parameters
+            
+        Returns:
+            Updated visualization data
+        """
+        session_id = request.sid
+        viz_id = data.get('id')
+        
+        if viz_id not in self.active_sessions[session_id]['visualizations']:
+            raise ValueError(f"Visualization {viz_id} not found")
+        
+        # Get current visualization
+        current = self.active_sessions[session_id]['visualizations'][viz_id]
+        
+        # Update parameters
+        current.update(data.get('parameters', {}))
+        
+        # Reprocess visualization
+        return self._process_visualization_request(current)
+    
+    def run(self):
+        """Run the server."""
+        self.socketio.run(self.app, host=self.host, port=self.port)
+    
+    def cleanup(self):
+        """Clean up server resources."""
+        # Stop metrics export
+        ray.get(self.metrics_exporter.stop.remote())
+        
+        # Clean up worker pool
+        self.worker_pool.cleanup()
+        
+        # Clean up cloud resources if used
+        if self.use_cloud:
+            self.cloud_manager.cleanup()
+        
+        # Clear caches
+        self.vector_cache.clear()
+        self.active_sessions.clear()
 
 def run_server(
     host: str = 'localhost',
@@ -204,4 +318,4 @@ def run_server(
         use_cloud=use_cloud,
         config_path=config_path
     )
-    server.start() 
+    server.run() 

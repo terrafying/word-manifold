@@ -8,8 +8,10 @@ from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d import Axes3D  # Import 3D toolkit
 import seaborn as sns
 from sklearn.decomposition import PCA
+from pathlib import Path
+import requests
 
-from .base import Visualizer, VisualizationData
+from .base import VisualizationRenderer, VisualizationData
 from .utils import (
     create_color_gradient, 
     scale_coordinates, 
@@ -43,7 +45,7 @@ class ManifoldPlotData:
         """Generate labels for points."""
         return {i: ','.join(terms[:3]) for i, terms in enumerate(self.terms)}
 
-class ManifoldVisualizer(Visualizer):
+class ManifoldVisualizer(VisualizationRenderer):
     """Visualizer for manifold structures."""
     
     def __init__(self, embeddings: np.ndarray, terms: List[List[str]], n_components: int = 2):
@@ -85,13 +87,13 @@ class ManifoldVisualizer(Visualizer):
             coherence=coherence
         )
     
-    def plot(self, data: ManifoldPlotData) -> Figure:
+    def _create_plot(self, data: ManifoldPlotData, title: Optional[str] = None, figure_size: tuple = (15, 5)) -> Figure:
         """Create manifold visualization."""
         plot_data = data.to_plot_data()
         points = plot_data['points']
         
         # Create figure with subplots
-        fig = plt.figure(figsize=(15, 5))
+        fig = plt.figure(figsize=figure_size)
         
         # Create manifold plot (2D or 3D)
         if self.n_components == 2:
@@ -106,7 +108,7 @@ class ManifoldVisualizer(Visualizer):
             ax1.set_ylabel('Component 2')
             ax1.set_zlabel('Component 3')
         
-        ax1.set_title('Manifold Structure')
+        ax1.set_title(title or 'Manifold Structure')
         
         # Add labels and legend
         labels = data.get_labels()
@@ -134,4 +136,63 @@ class ManifoldVisualizer(Visualizer):
             add_colorbar(fig, ax3.collections[0], 'Coherence')
         
         plt.tight_layout()
-        return fig 
+        self._figure = fig
+        return fig
+
+    def render_local(
+        self,
+        data: Dict[str, Any],
+        output_path: Path,
+        title: Optional[str] = None,
+        figure_size: tuple = (15, 10)
+    ) -> Path:
+        """Render visualization locally.
+        
+        Args:
+            data: Visualization data dictionary
+            output_path: Path to save the visualization
+            title: Optional title for the visualization
+            figure_size: Size of the figure (width, height)
+            
+        Returns:
+            Path to the saved visualization file
+        """
+        plot_data = ManifoldPlotData(**data)
+        fig = self._create_plot(plot_data, title, figure_size)
+        fig.savefig(output_path)
+        return output_path
+
+    def render_server(
+        self,
+        data: Dict[str, Any],
+        server_url: str,
+        endpoint: str = '/api/visualize'
+    ) -> Dict[str, Any]:
+        """Render visualization using server.
+        
+        Args:
+            data: Visualization data dictionary
+            server_url: URL of the visualization server
+            endpoint: API endpoint for visualization
+            
+        Returns:
+            Server response containing visualization data
+        """
+        plot_data = ManifoldPlotData(**data)
+        
+        # Convert plot data to server format
+        server_data = {
+            'type': 'manifold',
+            'data': plot_data.to_plot_data(),
+            'metadata': {
+                'n_components': self.n_components,
+                'labels': plot_data.get_labels(),
+                'colors': plot_data.get_color_map()
+            }
+        }
+        
+        # Send data to server
+        response = requests.post(f"{server_url.rstrip('/')}{endpoint}", json=server_data)
+        response.raise_for_status()
+        
+        return response.json() 

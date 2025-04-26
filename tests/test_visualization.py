@@ -3,8 +3,15 @@
 import pytest
 import numpy as np
 from matplotlib.figure import Figure
+from pathlib import Path
+from typing import Dict, Any, Optional
 
-from word_manifold.visualization.base import Visualizer, InteractiveVisualizer, VisualizationData
+from word_manifold.visualization.base import (
+    VisualizationData,
+    VisualizationEngine,
+    VisualizationRenderer,
+    InteractiveVisualizer
+)
 from word_manifold.visualization.manifold_vis import ManifoldVisualizer, ManifoldPlotData
 from word_manifold.visualization.interactive import InteractiveManifoldVisualizer
 from word_manifold.visualization.utils import (
@@ -30,39 +37,73 @@ class MockVisualizationData:
     def get_labels(self):
         return self.labels
 
-class MockVisualizer(Visualizer):
+class MockVisualizer(VisualizationRenderer):
     """Mock visualizer for testing."""
-    def prepare_data(self):
-        points = np.array([[1, 2], [3, 4]])
-        labels = {0: 'A', 1: 'B'}
-        colors = {'A': 'red', 'B': 'blue'}
-        return MockVisualizationData(points, labels, colors)
-        
-    def plot(self, data):
-        fig = Figure()
+    def __init__(self):
+        super().__init__()
+        self._engine = MockVisualizationEngine()
+
+    def render_local(
+        self,
+        data: Dict[str, Any],
+        output_path: Path,
+        title: Optional[str] = None,
+        figure_size: tuple = (15, 10)
+    ) -> Path:
+        """Render visualization locally."""
+        fig = Figure(figsize=figure_size)
         ax = fig.add_subplot(111)
-        points = data.to_plot_data()['points']
+        points = data['points']
         ax.scatter(points[:, 0], points[:, 1])
-        return fig
+        if title:
+            ax.set_title(title)
+        fig.savefig(output_path)
+        return output_path
+
+    def render_server(
+        self,
+        data: Dict[str, Any],
+        server_url: str,
+        endpoint: str = '/api/visualize'
+    ) -> Dict[str, Any]:
+        """Render visualization using server."""
+        # Mock server rendering
+        return {'status': 'success', 'url': f'{server_url}{endpoint}'}
+
+class MockVisualizationEngine(VisualizationEngine):
+    """Mock visualization engine for testing."""
+    def process_data(self, *args, **kwargs) -> Dict[str, Any]:
+        points = np.array([[1, 2], [3, 4]])
+        return {'points': points}
+        
+    def generate_patterns(self, *args, **kwargs) -> Dict[str, Any]:
+        return {'pattern': 'test_pattern'}
 
 def test_visualizer_base():
     """Test base visualizer functionality."""
     vis = MockVisualizer()
     
-    # Test data preparation
-    data = vis.prepare_data()
-    assert isinstance(data, VisualizationData)
-    assert 'points' in data.to_plot_data()
+    # Test data preparation through engine
+    data = vis._engine.process_data()
+    assert isinstance(data, dict)
+    assert 'points' in data
     
-    # Test plotting
-    fig = vis.plot(data)
-    assert isinstance(fig, Figure)
+    # Test local rendering
+    output_path = Path('test_vis.png')
+    rendered_path = vis.render_local(data, output_path, "Test Visualization")
+    assert rendered_path == output_path
     
-    # Test show and close
-    vis.show()
-    assert vis._figure is not None
+    # Test server rendering
+    server_result = vis.render_server(data, 'http://localhost:8000')
+    assert server_result['status'] == 'success'
+    
+    # Test cleanup
     vis.close()
     assert vis._figure is None
+
+    # Clean up test file
+    if output_path.exists():
+        output_path.unlink()
 
 def test_manifold_visualizer():
     """Test manifold visualizer functionality."""
