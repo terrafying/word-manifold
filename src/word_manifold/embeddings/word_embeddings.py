@@ -76,7 +76,8 @@ class WordEmbeddings:
     def __init__(
         self,
         model_name: str = "all-MiniLM-L6-v2",
-        dimension: int = 768
+        dimension: int = 768,
+        cache_dir: Optional[Path] = None
     ):
         """
         Initialize the word embeddings manager.
@@ -84,11 +85,17 @@ class WordEmbeddings:
         Args:
             model_name: Name of the sentence transformer model
             dimension: Dimension of the embedding space
+            cache_dir: Directory to save/load cached embeddings (optional) - TODO: Implement
         """
         self.model_name = model_name
         self.dimension = dimension
+        if type(cache_dir) == str:
+            self.cache_dir = Path(cache_dir)    
+        else:
+            self.cache_dir = cache_dir
         self.model = SentenceTransformer(model_name)
         self.embeddings: Dict[str, np.ndarray] = {}
+        self.model_host = ModelHost()
         
     def get_embedding(self, word: str) -> np.ndarray:
         """

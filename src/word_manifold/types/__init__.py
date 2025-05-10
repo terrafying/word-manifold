@@ -3,7 +3,6 @@
 from .cell_types import CellType
 from .distance_types import DistanceType
 from .patterns import Pattern, ASCIIPattern, Mandala, Field
-from ..types import ManifoldState
 
 __all__ = [
     'CellType',
@@ -12,5 +11,4 @@ __all__ = [
     'ASCIIPattern',
     'Mandala',
     'Field',
-    'ManifoldState',
 ] 

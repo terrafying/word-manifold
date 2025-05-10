@@ -94,6 +94,8 @@ The package is built around several core components:
    - Interactive exploration capabilities
    - Visualization options
 
+Note, recommended package manager is `uv`, as in `uv pip install -e .` for devel
+
 ## Installation
 
 ```bash
@@ -105,7 +107,7 @@ For development installation:
 ```bash
 git clone https://github.com/yourusername/word-manifold.git
 cd word-manifold
-pip install -e ".[dev,ml,data,viz]"
+uv pip install -e ".[dev,ml,data,viz]"
 ```
 
 ## Quick Start
@@ -239,3 +241,12 @@ Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribut
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Evolving Mandala Viewer Demo
+
+Here's a quick look at the evolving mandala animation:
+
+![Evolving Mandala Animation](assets/animation.gif)
+
+[Download a demo video (MP4)](assets/demo_video.mp4)
+

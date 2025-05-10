@@ -126,12 +126,23 @@ def generate_and_plot_umap():
     output_plot_dir = os.path.join(project_root, 'visualizations')
     os.makedirs(output_plot_dir, exist_ok=True)
     output_plot_path = os.path.join(output_plot_dir, 'umap_default_terms_canvas.png')
+    output_data_path = os.path.join(output_plot_dir, 'umap_default_terms_data.npz') # Path for .npz file
     
     try:
         plt.savefig(output_plot_path)
         print(f"UMAP plot saved to: {output_plot_path}")
+
+        # Save the data needed for the Mandelbrot script
+        np.savez(
+            output_data_path,
+            projected_embeddings_2d=projected_embeddings_2d,
+            word_embeddings_array=word_embeddings_array,
+            terms=np.array(valid_terms, dtype=object) # Save terms as object array for strings
+        )
+        print(f"UMAP data saved to: {output_data_path}")
+
     except Exception as e:
-        print(f"Error saving plot: {e}")
+        print(f"Error saving plot or data: {e}")
 
     # plt.show() # Uncomment if you want to display the plot interactively
 
